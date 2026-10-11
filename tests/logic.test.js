@@ -1,0 +1,128 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  addDays, addMonths, monthGrid, isISODate, formatDuration, parseDuration, estimate1RM,
+  formatSet, validateSet, prSetIds, computeRecords, metricSeries, toCSV, checkBackup,
+  BACKUP_FORMAT, BACKUP_VERSION,
+} from '../js/logic.js';
+
+let n = 0;
+const set = (date, fields) => ({ id: `s${++n}`, date, order: n, exerciseId: 'e1', ...fields });
+
+test('date helpers', () => {
+  assert.equal(addDays('2024-02-28', 1), '2024-02-29');
+  assert.equal(addDays('2024-03-01', -1), '2024-02-29');
+  assert.equal(addDays('2025-12-31', 1), '2026-01-01');
+  assert.equal(addMonths('2025-12', 1), '2026-01');
+  assert.equal(addMonths('2026-01', -1), '2025-12');
+  assert.ok(isISODate('2026-10-11'));
+  assert.ok(!isISODate('2026-02-30'));
+  assert.ok(!isISODate('garbage'));
+});
+
+test('monthGrid pads to whole weeks and covers every day', () => {
+  const weeks = monthGrid('2026-10'); // Oct 1 2026 is a Thursday
+  assert.equal(weeks[0].indexOf('2026-10-01'), 4);
+  assert.equal(weeks.flat().filter(Boolean).length, 31);
+  assert.ok(weeks.every((w) => w.length === 7));
+});
+
+test('durations', () => {
+  assert.equal(formatDuration(65), '1:05');
+  assert.equal(formatDuration(3725), '1:02:05');
+  assert.equal(parseDuration('1:02:05'), 3725);
+  assert.equal(parseDuration('45'), 45);
+  assert.equal(parseDuration('a:b'), null);
+});
+
+test('estimate1RM (Epley)', () => {
+  assert.equal(estimate1RM(200, 1), 200);
+  assert.equal(estimate1RM(150, 10), 200);
+  assert.equal(estimate1RM(0, 5), 0);
+});
+
+test('formatSet', () => {
+  assert.equal(formatSet({ weight: 135, reps: 5 }, 'weight_reps'), '135 lbs × 5');
+  assert.equal(formatSet({ distance: 3.1, seconds: 1500 }, 'distance_time'), '3.1 mi in 25:00');
+  assert.equal(formatSet({ seconds: 60 }, 'time'), '1:00');
+});
+
+test('validateSet', () => {
+  assert.equal(validateSet({ weight: 100, reps: 0 }, 'weight_reps'), 'Enter at least 1 rep.');
+  assert.equal(validateSet({ weight: 0, reps: 10 }, 'weight_reps'), null);
+  assert.equal(validateSet({ distance: 0, seconds: 0 }, 'distance_time'), 'Enter a distance or a time.');
+  assert.equal(validateSet({ weight: -5, reps: 5 }, 'weight_reps'), 'Values must be zero or more.');
+  assert.equal(validateSet({ weight: NaN, reps: 5 }, 'weight_reps'), 'Values must be zero or more.');
+});
+
+test('prSetIds: weight & reps uses rep-max dominance', () => {
+  const a = set('2026-01-01', { weight: 135, reps: 5 });
+  const b = set('2026-01-01', { weight: 135, reps: 5 }); // equal: not a PR
+  const c = set('2026-01-03', { weight: 145, reps: 3 }); // heavier: PR
+  const d = set('2026-01-05', { weight: 135, reps: 8 }); // more reps: PR
+  const e = set('2026-01-07', { weight: 140, reps: 3 }); // dominated by c: not a PR
+  const prs = prSetIds([e, d, c, b, a], 'weight_reps');
+  assert.deepEqual([...prs].sort(), [a.id, c.id, d.id].sort());
+});
+
+test('prSetIds: cardio uses distance', () => {
+  const a = set('2026-01-01', { distance: 3, seconds: 1800 });
+  const b = set('2026-01-02', { distance: 2, seconds: 900 });
+  const c = set('2026-01-03', { distance: 5, seconds: 3000 });
+  assert.deepEqual([...prSetIds([a, b, c], 'distance_time')], [a.id, c.id]);
+});
+
+test('computeRecords for weight & reps', () => {
+  const sets = [
+    set('2026-02-01', { weight: 200, reps: 1 }),
+    set('2026-02-01', { weight: 150, reps: 10 }),
+    set('2026-02-08', { weight: 185, reps: 5 }),
+  ];
+  const { rows, repMaxes } = computeRecords(sets, 'weight_reps');
+  const byLabel = Object.fromEntries(rows.map((r) => [r.label, r]));
+  assert.match(byLabel['Estimated 1RM'].value, /^215\.8 lbs/); // 185 × (1 + 5/30)
+  assert.equal(byLabel['Heaviest weight'].value, '200 lbs × 1');
+  assert.equal(byLabel['Most volume (day)'].value, '1700 lbs');
+  assert.equal(byLabel['Most volume (day)'].date, '2026-02-01');
+  assert.deepEqual(repMaxes.slice(0, 6).map((r) => r.weight), [200, 185, 185, 185, 185, 150]);
+});
+
+test('computeRecords fastest pace', () => {
+  const sets = [
+    set('2026-03-01', { distance: 3, seconds: 1800 }), // 10:00/mi
+    set('2026-03-02', { distance: 1, seconds: 480 }), // 8:00/mi
+  ];
+  const pace = computeRecords(sets, 'distance_time').rows.find((r) => r.label === 'Fastest pace');
+  assert.equal(pace.value, '8:00 /mi');
+  assert.equal(pace.date, '2026-03-02');
+});
+
+test('metricSeries aggregates per day', () => {
+  const sets = [
+    set('2026-04-01', { weight: 100, reps: 10 }),
+    set('2026-04-01', { weight: 110, reps: 8 }),
+    set('2026-04-03', { weight: 120, reps: 5 }),
+  ];
+  assert.deepEqual(metricSeries(sets, 'weight_reps', 'volume'), [
+    { date: '2026-04-01', value: 1880 },
+    { date: '2026-04-03', value: 600 },
+  ]);
+  assert.deepEqual(metricSeries(sets, 'weight_reps', 'maxWeight').map((p) => p.value), [110, 120]);
+});
+
+test('toCSV uses FitNotes-style columns and escapes text', () => {
+  const exercises = new Map([['e1', { id: 'e1', name: 'Bench, Flat', categoryId: 'c1', type: 'weight_reps' }]]);
+  const categories = new Map([['c1', { id: 'c1', name: 'Chest' }]]);
+  const csv = toCSV([set('2026-05-01', { weight: 135, reps: 5, comment: 'said "easy"' })], exercises, categories);
+  const [header, row] = csv.trim().split('\r\n');
+  assert.equal(header, 'Date,Exercise,Category,Weight,Weight Unit,Reps,Distance,Distance Unit,Time,Comment');
+  assert.equal(row, '2026-05-01,"Bench, Flat",Chest,135,lbs,5,,,,"said ""easy"""');
+});
+
+test('checkBackup rejects bad files', () => {
+  assert.throws(() => checkBackup({}), /not a backup/);
+  assert.throws(() => checkBackup({ format: BACKUP_FORMAT, version: BACKUP_VERSION + 1 }), /newer version/);
+  const ok = { format: BACKUP_FORMAT, version: 1, categories: [], exercises: [{ id: 'e1' }], sets: [{ date: '2026-01-01', exerciseId: 'e1' }] };
+  assert.equal(checkBackup(ok), ok);
+  assert.throws(() => checkBackup({ ...ok, sets: [{ date: '2026-01-01', exerciseId: 'nope' }] }), /invalid/);
+});

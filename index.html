@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gym Log</title>
+  <meta name="description" content="A simple, offline workout log for lifts and cardio.">
+  <meta name="theme-color" content="#16181d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gym Log">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header id="header" class="header"></header>
+  <main id="main" class="main"><p class="empty">Loading…</p></main>
+  <div id="timer" class="timerbar" hidden></div>
+  <nav id="tabs" class="tabs">
+    <a id="tab-log" href="#/day" data-tab="log"><span class="ico">✎</span>Log</a>
+    <a href="#/calendar" data-tab="calendar"><span class="ico">▦</span>Calendar</a>
+    <a href="#/exercises" data-tab="exercises"><span class="ico">☰</span>Exercises</a>
+    <a href="#/settings" data-tab="settings"><span class="ico">⚙</span>Settings</a>
+  </nav>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
