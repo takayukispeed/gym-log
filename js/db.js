@@ -2,14 +2,17 @@
 // Everything is loaded at startup (a few years of sets is well under a few MB),
 // so reads are synchronous and writes go through to IndexedDB.
 
-import { SEED_CATEGORIES, SEED_EXERCISES } from './seed.js';
-import { BACKUP_FORMAT, BACKUP_VERSION, checkBackup, compareSets } from './logic.js';
+import { SEED_CATEGORIES, SEED_EXERCISES, SAMPLE_ROUTINE } from './seed.js';
+import { BACKUP_FORMAT, BACKUP_VERSION, checkBackup, compareSets, setUnits } from './logic.js';
 
 const DB_NAME = 'gymlog';
-const DB_VERSION = 1;
-const STORES = ['categories', 'exercises', 'sets', 'days', 'meta'];
+const DB_VERSION = 2;
+const STORES = ['categories', 'exercises', 'sets', 'days', 'meta', 'body', 'routines'];
+const DATA_STORES = ['categories', 'exercises', 'sets', 'days', 'body', 'routines'];
 
 export const DEFAULT_SETTINGS = {
+  weightUnit: 'lbs',
+  distanceUnit: 'mi',
   restSeconds: 90,
   autoStartTimer: true,
   timerSound: true,
@@ -23,7 +26,10 @@ export const state = {
   categories: new Map(),
   exercises: new Map(),
   sets: new Map(),
-  days: new Map(), // date -> { date, exerciseOrder: [exerciseId], note }
+  // date -> { date, exerciseOrder: [exerciseId], note, plan: [routine item], workoutName }
+  days: new Map(),
+  body: new Map(), // date -> { date, weight (lbs), note }
+  routines: new Map(), // id -> { id, name, sort, workouts: [{ id, name, items: [routine item] }] }
   settings: { ...DEFAULT_SETTINGS },
   lastBackup: null,
 };
@@ -38,15 +44,21 @@ function promisify(req) {
 function open() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
-      db.createObjectStore('categories', { keyPath: 'id' });
-      db.createObjectStore('exercises', { keyPath: 'id' });
-      const sets = db.createObjectStore('sets', { keyPath: 'id' });
-      sets.createIndex('date', 'date');
-      sets.createIndex('exerciseId', 'exerciseId');
-      db.createObjectStore('days', { keyPath: 'date' });
-      db.createObjectStore('meta', { keyPath: 'key' });
+      if (event.oldVersion < 1) {
+        db.createObjectStore('categories', { keyPath: 'id' });
+        db.createObjectStore('exercises', { keyPath: 'id' });
+        const sets = db.createObjectStore('sets', { keyPath: 'id' });
+        sets.createIndex('date', 'date');
+        sets.createIndex('exerciseId', 'exerciseId');
+        db.createObjectStore('days', { keyPath: 'date' });
+        db.createObjectStore('meta', { keyPath: 'key' });
+      }
+      if (event.oldVersion < 2) {
+        db.createObjectStore('body', { keyPath: 'date' });
+        db.createObjectStore('routines', { keyPath: 'id' });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -69,18 +81,22 @@ export const uid = () =>
 export async function init() {
   idb = await open();
   const t = idb.transaction(STORES, 'readonly');
-  const [cats, exs, sets, days, meta] = await Promise.all(
+  const [cats, exs, sets, days, meta, body, routines] = await Promise.all(
     STORES.map((s) => promisify(t.objectStore(s).getAll())),
   );
   cats.forEach((c) => state.categories.set(c.id, c));
   exs.forEach((e) => state.exercises.set(e.id, e));
   sets.forEach((s) => state.sets.set(s.id, s));
   days.forEach((d) => state.days.set(d.date, d));
+  body.forEach((b) => state.body.set(b.date, b));
+  routines.forEach((r) => state.routines.set(r.id, r));
   for (const m of meta) {
     if (m.key === 'settings') state.settings = { ...DEFAULT_SETTINGS, ...m.value };
     if (m.key === 'lastBackup') state.lastBackup = m.value;
   }
+  setUnits({ weight: state.settings.weightUnit, distance: state.settings.distanceUnit });
   if (!meta.some((m) => m.key === 'seeded')) await seed();
+  if (!meta.some((m) => m.key === 'seededRoutines')) await seedRoutines();
 }
 
 async function seed() {
@@ -100,6 +116,42 @@ async function seed() {
   exs.forEach((e) => state.exercises.set(e.id, e));
 }
 
+function findExerciseByName(name) {
+  const n = name.toLowerCase();
+  return [...state.exercises.values()].find((e) => e.name.toLowerCase() === n);
+}
+
+// Adds the sample 5×5 routine once, creating any exercise it needs.
+async function seedRoutines() {
+  const newExercises = [];
+  const exerciseFor = (name, catName) => {
+    let ex = findExerciseByName(name) || newExercises.find((e) => e.name === name);
+    if (!ex) {
+      const cat = [...state.categories.values()].find((c) => c.name === catName) || categoryList()[0];
+      ex = { id: uid(), name, categoryId: cat?.id, type: 'weight_reps', notes: '' };
+      newExercises.push(ex);
+    }
+    return ex;
+  };
+  const routine = {
+    id: uid(),
+    name: SAMPLE_ROUTINE.name,
+    sort: 0,
+    workouts: SAMPLE_ROUTINE.workouts.map((w) => ({
+      id: uid(),
+      name: w.name,
+      items: w.items.map(([name, cat, sets, reps]) => ({ exerciseId: exerciseFor(name, cat).id, sets, reps })),
+    })),
+  };
+  await tx(['exercises', 'routines', 'meta'], 'readwrite', (t) => {
+    newExercises.forEach((e) => t.objectStore('exercises').put(e));
+    t.objectStore('routines').put(routine);
+    t.objectStore('meta').put({ key: 'seededRoutines', value: true });
+  });
+  newExercises.forEach((e) => state.exercises.set(e.id, e));
+  state.routines.set(routine.id, routine);
+}
+
 // ---------- generic writes ----------
 
 function putRecord(store, map, keyName, rec) {
@@ -115,9 +167,14 @@ function deleteRecord(store, map, key) {
 export const saveCategory = (c) => putRecord('categories', state.categories, 'id', c);
 export const saveExercise = (e) => putRecord('exercises', state.exercises, 'id', e);
 export const saveDay = (d) => putRecord('days', state.days, 'date', d);
+export const saveRoutine = (r) => putRecord('routines', state.routines, 'id', r);
+export const deleteRoutine = (id) => deleteRecord('routines', state.routines, id);
+export const saveBody = (b) => putRecord('body', state.body, 'date', b);
+export const deleteBody = (date) => deleteRecord('body', state.body, date);
 
 export async function saveSettings(patch) {
   state.settings = { ...state.settings, ...patch };
+  setUnits({ weight: state.settings.weightUnit, distance: state.settings.distanceUnit });
   await tx(['meta'], 'readwrite', (t) => t.objectStore('meta').put({ key: 'settings', value: state.settings }));
 }
 
@@ -135,9 +192,14 @@ export const setsOn = (date) => [...state.sets.values()].filter((s) => s.date ==
 export const setsFor = (exerciseId) => [...state.sets.values()].filter((s) => s.exerciseId === exerciseId).sort(compareSets);
 export const setsOnFor = (date, exerciseId) => setsOn(date).filter((s) => s.exerciseId === exerciseId);
 
-// Exercises performed on a date, in the user's chosen order.
+export const routineList = () => [...state.routines.values()].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.name.localeCompare(b.name));
+export const bodyList = () => [...state.body.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+export const planFor = (date, exerciseId) => (state.days.get(date)?.plan || []).find((p) => p.exerciseId === exerciseId) || null;
+
+// Exercises performed or planned on a date, in the user's chosen order.
 export function exercisesOn(date) {
   const present = new Set(setsOn(date).map((s) => s.exerciseId));
+  (state.days.get(date)?.plan || []).forEach((p) => present.add(p.exerciseId));
   const day = state.days.get(date);
   const ordered = (day?.exerciseOrder || []).filter((id) => present.has(id));
   for (const id of present) if (!ordered.includes(id)) ordered.push(id);
@@ -194,6 +256,31 @@ export async function deleteExerciseFromDay(date, exerciseId) {
   const ids = setsOnFor(date, exerciseId).map((s) => s.id);
   ids.forEach((id) => state.sets.delete(id));
   await tx(['sets'], 'readwrite', (t) => ids.forEach((id) => t.objectStore('sets').delete(id)));
+  const day = state.days.get(date);
+  if (day) {
+    await saveDay({
+      ...day,
+      plan: (day.plan || []).filter((p) => p.exerciseId !== exerciseId),
+      exerciseOrder: (day.exerciseOrder || []).filter((id) => id !== exerciseId),
+    });
+  }
+}
+
+// Adds a routine workout's exercises and targets to a day. Re-loading the same
+// exercise replaces its target rather than duplicating it.
+export async function loadWorkout(date, workout) {
+  const day = state.days.get(date) || { date, exerciseOrder: [], note: '' };
+  const items = workout.items.filter((i) => state.exercises.has(i.exerciseId));
+  const ids = new Set(items.map((i) => i.exerciseId));
+  const plan = [...(day.plan || []).filter((p) => !ids.has(p.exerciseId)), ...items.map((i) => ({ ...i }))];
+  const order = [...exercisesOn(date).map((e) => e.id)];
+  items.forEach((i) => { if (!order.includes(i.exerciseId)) order.push(i.exerciseId); });
+  await saveDay({ ...day, plan, exerciseOrder: order, workoutName: workout.name });
+}
+
+export async function clearPlan(date) {
+  const day = state.days.get(date);
+  if (day) await saveDay({ ...day, plan: [], workoutName: '' });
 }
 
 // Copies every set of a past workout onto another date, appended after existing work.
@@ -213,9 +300,18 @@ export async function deleteExercise(id) {
   const setIds = setsFor(id).map((s) => s.id);
   setIds.forEach((sid) => state.sets.delete(sid));
   state.exercises.delete(id);
-  await tx(['sets', 'exercises'], 'readwrite', (t) => {
+  // Drop the exercise from any routine that uses it.
+  const changed = [];
+  for (const r of state.routines.values()) {
+    if (r.workouts.some((w) => w.items.some((i) => i.exerciseId === id))) {
+      r.workouts = r.workouts.map((w) => ({ ...w, items: w.items.filter((i) => i.exerciseId !== id) }));
+      changed.push(r);
+    }
+  }
+  await tx(['sets', 'exercises', 'routines'], 'readwrite', (t) => {
     setIds.forEach((sid) => t.objectStore('sets').delete(sid));
     t.objectStore('exercises').delete(id);
+    changed.forEach((r) => t.objectStore('routines').put(r));
   });
 }
 
@@ -236,25 +332,37 @@ export function exportBackup() {
     exercises: [...state.exercises.values()],
     sets: [...state.sets.values()].sort(compareSets),
     days: [...state.days.values()],
+    body: bodyList(),
+    routines: routineList(),
   };
 }
 
 // Replaces all data with the backup's contents.
 export async function importBackup(obj) {
   checkBackup(obj);
+  const data = {
+    categories: obj.categories,
+    exercises: obj.exercises,
+    sets: obj.sets,
+    days: obj.days || [],
+    body: obj.body || [],
+    routines: obj.routines || [],
+  };
+  const settings = { ...DEFAULT_SETTINGS, ...obj.settings };
   await tx(STORES, 'readwrite', (t) => {
-    for (const s of ['categories', 'exercises', 'sets', 'days']) t.objectStore(s).clear();
-    obj.categories.forEach((c) => t.objectStore('categories').put(c));
-    obj.exercises.forEach((e) => t.objectStore('exercises').put(e));
-    obj.sets.forEach((s) => t.objectStore('sets').put(s));
-    (obj.days || []).forEach((d) => t.objectStore('days').put(d));
-    t.objectStore('meta').put({ key: 'settings', value: { ...DEFAULT_SETTINGS, ...obj.settings } });
+    for (const s of DATA_STORES) {
+      t.objectStore(s).clear();
+      data[s].forEach((rec) => t.objectStore(s).put(rec));
+    }
+    t.objectStore('meta').put({ key: 'settings', value: settings });
     t.objectStore('meta').put({ key: 'seeded', value: true });
+    t.objectStore('meta').put({ key: 'seededRoutines', value: true });
   });
-  for (const k of ['categories', 'exercises', 'sets', 'days']) state[k].clear();
-  obj.categories.forEach((c) => state.categories.set(c.id, c));
-  obj.exercises.forEach((e) => state.exercises.set(e.id, e));
-  obj.sets.forEach((s) => state.sets.set(s.id, s));
-  (obj.days || []).forEach((d) => state.days.set(d.date, d));
-  state.settings = { ...DEFAULT_SETTINGS, ...obj.settings };
+  const keyOf = { days: 'date', body: 'date' };
+  for (const s of DATA_STORES) {
+    state[s].clear();
+    data[s].forEach((rec) => state[s].set(rec[keyOf[s] || 'id'], rec));
+  }
+  state.settings = settings;
+  setUnits({ weight: settings.weightUnit, distance: settings.distanceUnit });
 }

@@ -128,8 +128,92 @@ try {
   assert.equal(await page.locator('.cal a.has').count() >= 1, true);
   await shot('06-calendar');
 
+  step('sample 5×5 routine is present');
+  await page.click('#tabs >> text=Routines');
+  await page.waitForSelector('.routine');
+  const routinesText = await page.textContent('#main');
+  for (const t of ['5×5', 'Workout A', 'Workout B', 'Flat Barbell Bench Press', 'Barbell Squat', 'Overhead Press', 'Deadlift', 'Barbell Row', 'Dumbbell Lunge', '3 × 10']) {
+    assert.ok(routinesText.includes(t), `routines page shows ${t}`);
+  }
+  await shot('08-routines');
+
+  step('loads Workout A onto an empty day');
+  const d = new Date(); d.setDate(d.getDate() + 3);
+  const planDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await page.goto(`${base}#/day/${planDate}`);
+  await page.click('.list a.stack >> text=Workout A');
+  await page.waitForFunction(() => document.querySelectorAll('.ex-card').length === 3);
+  assert.deepEqual(await page.locator('.progress-pill').allTextContents(), ['0/5 sets', '0/5 sets', '0/5 sets']);
+  assert.equal(await page.textContent('.workout-label'), 'Workout A');
+
+  step('tracks planned sets to completion');
+  await page.click('.ex-card >> text=Flat Barbell Bench Press');
+  await page.waitForSelector('.plan-bar');
+  assert.equal(await page.inputValue('#f-reps'), '5', 'reps prefilled from target');
+  assert.equal(await page.inputValue('#f-weight'), '145', 'weight prefilled from last session');
+  for (let i = 1; i <= 5; i++) {
+    await page.click('#set-form button[type=submit]');
+    await page.waitForFunction((n) => document.querySelectorAll('#sets li').length === n, i);
+  }
+  await page.waitForSelector('.plan-bar.done');
+  assert.match(await page.textContent('#next-ex'), /Barbell Squat/);
+  await page.click('#timer button[data-t="stop"]');
+  await page.click('.header .back');
+  await page.waitForSelector('.progress-pill.done');
+  await shot('09-planned-day');
+
+  step('edits a workout: target weight and an extra exercise');
+  await page.click('#tabs >> text=Routines');
+  await page.click('.workout-info >> text=Workout B');
+  await page.waitForSelector('#items');
+  await page.fill('input[data-idx="0"][data-field="weight"]', '225');
+  await page.press('input[data-idx="0"][data-field="weight"]', 'Tab');
+  await page.click('text=+ Add exercise');
+  await page.fill('#search', 'plank');
+  await page.click('#results >> text=Plank');
+  await page.waitForFunction(() => document.querySelectorAll('#items .item').length === 4);
+  await shot('10-workout-edit');
+  await page.click('.header .back');
+  await page.waitForSelector('#r-name'); // routine editor
+  await page.click('.header .back');
+  await page.waitForSelector('.routine'); // routines list
+  assert.match(await page.textContent('#main'), /5 × 5 @ 225 lbs/);
+
+  step('switching to kg/km converts everything');
+  await page.click('#tabs >> text=Settings');
+  await page.click('text=Kilograms (kg)');
+  await page.waitForSelector('.toast.show >> text=Showing kg');
+  await page.click('text=Kilometres (km)');
+  await page.waitForSelector('.toast.show >> text=Showing kg and km');
+  await page.goto(`${base}#/day/${planDate}`);
+  await page.waitForSelector('.ex-card');
+  assert.match(await page.textContent('.ex-card'), /65\.77 kg × 5/); // 145 lb
+  await page.click('#tabs >> text=Log');
+  await page.waitForSelector('#day:not(:has(.progress-pill))');
+  assert.match(await page.textContent('#day'), /4\.99 km in 25:30/); // 3.1 mi
+  await page.click('#tabs >> text=Routines');
+  await page.waitForSelector('.routine');
+  assert.match(await page.textContent('#main'), /5 × 5 @ 102\.06 kg/);
+
+  step('bodyweight in kg, shown in lbs after switching back');
+  await page.click('#tabs >> text=Body');
+  await page.fill('#b-weight', '84');
+  await page.click('#body-form button[type=submit]');
+  await page.waitForSelector('.stats');
+  assert.equal(await page.textContent('.stat strong'), '84');
+  await page.click('#tabs >> text=Settings');
+  await page.click('text=Pounds (lbs)');
+  await page.waitForSelector('.toast.show >> text=Showing lbs');
+  await page.click('#tabs >> text=Body');
+  await page.waitForSelector('.stats');
+  assert.equal(await page.textContent('.stat strong'), '185.2'); // 84 kg
+  await shot('11-body');
+  await page.click('#tabs >> text=Settings');
+  await page.click('text=Miles (mi)');
+  await page.waitForSelector('.toast.show >> text=Showing lbs and mi');
+
   step('creates a custom exercise');
-  await page.click('#tabs >> text=Exercises');
+  await page.click('text=Exercises & categories');
   await page.click('.header .plus');
   await page.fill('#name', 'Landmine Press');
   await page.selectOption('#cat', { label: 'Shoulders' });
@@ -149,16 +233,19 @@ try {
   await download.saveAs(backupPath);
   const backup = JSON.parse(await readFile(backupPath, 'utf8'));
   assert.equal(backup.format, 'gymlog-backup');
-  assert.equal(backup.sets.length, 6);
+  assert.equal(backup.sets.length, 11);
+  assert.equal(backup.body.length, 1);
+  assert.equal(backup.routines[0].workouts[1].items.length, 4);
   await page.waitForFunction(() => !document.body.textContent.includes('Last backup: never'));
   page.once('dialog', (d) => d.accept());
   await page.setInputFiles('#restore-file', backupPath);
   await page.waitForSelector('.toast.show >> text=Backup restored');
+  assert.match(await page.textContent('#main'), /1 bodyweight entries · 1 routines/);
   const [csv] = await Promise.all([page.waitForEvent('download'), page.click('#csv')]);
   const csvPath = join(root, 'test-results', 'export.csv');
   await csv.saveAs(csvPath);
   const lines = (await readFile(csvPath, 'utf8')).trim().split('\r\n');
-  assert.equal(lines.length, 7);
+  assert.equal(lines.length, 12);
   await shot('07-settings');
 
   step('works offline after first load');

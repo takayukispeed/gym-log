@@ -12,8 +12,8 @@ function el(name, attrs = {}, parent) {
 
 function niceTicks(min, maxV, count = 4) {
   if (min === maxV) {
-    // A flat series gets a ±10% band so ticks stay meaningful.
-    const pad = Math.abs(min) * 0.1 || 1;
+    // A flat series gets a small band so ticks stay meaningful.
+    const pad = Math.max(Math.abs(min) * 0.02, 1);
     min -= pad; maxV += pad;
   }
   const raw = (maxV - min) / count;

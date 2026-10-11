@@ -1,6 +1,6 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
 // Bump VERSION whenever app files change so installed copies pick up the update.
-const VERSION = 'gymlog-v1';
+const VERSION = 'gymlog-v2';
 const SHELL = [
   './',
   'index.html',
@@ -12,6 +12,9 @@ const SHELL = [
   'js/seed.js',
   'js/timer.js',
   'js/chart.js',
+  'js/ui.js',
+  'js/views/body.js',
+  'js/views/routines.js',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',

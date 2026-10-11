@@ -1,4 +1,4 @@
-// Pure helpers: dates, formatting, records, chart series, CSV.
+// Pure helpers: units, dates, formatting, records, chart series, CSV.
 // No DOM or storage access here so this module can be unit-tested in Node.
 
 export const TYPES = {
@@ -8,8 +8,34 @@ export const TYPES = {
   time: { label: 'Time only', fields: ['seconds'] },
 };
 
-export const WEIGHT_UNIT = 'lbs';
-export const DISTANCE_UNIT = 'mi';
+// ---------- units ----------
+// Values are always STORED in pounds and miles. They are converted only when
+// shown or typed in, so switching units never alters or loses data.
+
+export const LB_PER_KG = 2.20462262185;
+export const KM_PER_MI = 1.609344;
+
+const units = { weight: 'lbs', distance: 'mi' };
+
+export function setUnits({ weight, distance } = {}) {
+  if (weight === 'lbs' || weight === 'kg') units.weight = weight;
+  if (distance === 'mi' || distance === 'km') units.distance = distance;
+}
+export const wUnit = () => units.weight;
+export const dUnit = () => units.distance;
+
+export const weightOut = (lbs) => (units.weight === 'kg' ? lbs / LB_PER_KG : lbs);
+export const weightIn = (v) => (units.weight === 'kg' ? v * LB_PER_KG : v);
+export const distOut = (mi) => (units.distance === 'km' ? mi * KM_PER_MI : mi);
+export const distIn = (v) => (units.distance === 'km' ? v / KM_PER_MI : v);
+// Pace is stored as seconds per mile.
+export const paceOut = (secPerMile) => secPerMile / distOut(1);
+
+export const DEFAULT_WEIGHT_STEP = { lbs: 5, kg: 2.5 };
+export const BODY_STEP = { lbs: 0.2, kg: 0.1 };
+
+export const fmtWeight = (lbs, decimals = 2) => `${fmtNum(weightOut(lbs), decimals)} ${units.weight}`;
+export const fmtDistance = (mi) => `${fmtNum(distOut(mi))} ${units.distance}`;
 
 // ---------- dates (ISO yyyy-mm-dd, local time) ----------
 
@@ -51,6 +77,13 @@ export function formatDayLong(iso, today = todayISO()) {
   return fromISO(iso).toLocaleDateString(undefined, {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   });
+}
+
+// Short label for day navigation: relative when near today, else "Tue, Oct 13".
+export function formatDayCompact(iso, today = todayISO()) {
+  const rel = formatDayLong(iso, today);
+  if (['Today', 'Yesterday', 'Tomorrow'].includes(rel)) return rel;
+  return fromISO(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 export function formatDayShort(iso) {
@@ -106,12 +139,12 @@ export function estimate1RM(weight, reps) {
 export function formatSet(set, type) {
   switch (type) {
     case 'weight_reps':
-      return `${fmtNum(set.weight)} ${WEIGHT_UNIT} × ${set.reps ?? 0}`;
+      return `${fmtWeight(set.weight || 0)} × ${set.reps ?? 0}`;
     case 'reps':
       return `${set.reps ?? 0} reps`;
     case 'distance_time': {
       const parts = [];
-      if (set.distance) parts.push(`${fmtNum(set.distance)} ${DISTANCE_UNIT}`);
+      if (set.distance) parts.push(fmtDistance(set.distance));
       if (set.seconds) parts.push(formatDuration(set.seconds));
       return parts.join(' in ') || '—';
     }
@@ -123,7 +156,7 @@ export function formatSet(set, type) {
 }
 
 export function formatPace(secondsPerMile) {
-  return secondsPerMile ? `${formatDuration(secondsPerMile)} /${DISTANCE_UNIT}` : '';
+  return secondsPerMile ? `${formatDuration(paceOut(secondsPerMile))} /${units.distance}` : '';
 }
 
 // ---------- set validation ----------
@@ -212,32 +245,29 @@ export function computeRecords(sets, type) {
   const push = (label, rec, fmt) => {
     if (rec) rows.push({ label, value: fmt(rec.value, rec.set), date: rec.set ? rec.set.date : rec.date });
   };
+  const wr = (s) => `${fmtNum(weightOut(s.weight))} × ${s.reps}`;
   const repMaxes = [];
   if (type === 'weight_reps') {
-    push('Estimated 1RM', maxBy(sorted, (s) => estimate1RM(s.weight, s.reps)),
-      (v, s) => `${fmtNum(v, 1)} ${WEIGHT_UNIT} (${fmtNum(s.weight)} × ${s.reps})`);
-    push('Heaviest weight', maxBy(sorted, (s) => (s.reps > 0 ? s.weight : 0)),
-      (v, s) => `${fmtNum(v)} ${WEIGHT_UNIT} × ${s.reps}`);
-    push('Most reps', maxBy(sorted, (s) => s.reps),
-      (v, s) => `${v} @ ${fmtNum(s.weight)} ${WEIGHT_UNIT}`);
-    push('Most volume (set)', maxBy(sorted, (s) => s.weight * s.reps),
-      (v, s) => `${fmtNum(v)} ${WEIGHT_UNIT} (${fmtNum(s.weight)} × ${s.reps})`);
-    push('Most volume (day)', bestDay(sorted, (s) => s.weight * s.reps), (v) => `${fmtNum(v)} ${WEIGHT_UNIT}`);
-    // Best weight lifted for at least N reps.
+    push('Estimated 1RM', maxBy(sorted, (s) => estimate1RM(s.weight, s.reps)), (v, s) => `${fmtWeight(v, 1)} (${wr(s)})`);
+    push('Heaviest weight', maxBy(sorted, (s) => (s.reps > 0 ? s.weight : 0)), (v, s) => `${fmtWeight(v)} × ${s.reps}`);
+    push('Most reps', maxBy(sorted, (s) => s.reps), (v, s) => `${v} @ ${fmtWeight(s.weight)}`);
+    push('Most volume (set)', maxBy(sorted, (s) => s.weight * s.reps), (v, s) => `${fmtWeight(v)} (${wr(s)})`);
+    push('Most volume (day)', bestDay(sorted, (s) => s.weight * s.reps), (v) => fmtWeight(v));
+    // Best weight lifted for at least N reps (weights in display units).
     for (let n = 1; n <= 15; n++) {
       const rec = maxBy(sorted, (s) => (s.reps >= n ? s.weight : 0));
-      if (rec) repMaxes.push({ reps: n, weight: rec.value, actualReps: rec.set.reps, date: rec.set.date });
+      if (rec) repMaxes.push({ reps: n, weight: weightOut(rec.value), actualReps: rec.set.reps, date: rec.set.date });
     }
   } else if (type === 'reps') {
     push('Most reps (set)', maxBy(sorted, (s) => s.reps), (v) => `${v} reps`);
     push('Most reps (day)', bestDay(sorted, (s) => s.reps || 0), (v) => `${v} reps`);
   } else if (type === 'distance_time') {
-    push('Longest distance', maxBy(sorted, (s) => s.distance || 0), (v) => `${fmtNum(v)} ${DISTANCE_UNIT}`);
+    push('Longest distance', maxBy(sorted, (s) => s.distance || 0), (v) => fmtDistance(v));
     push('Longest time', maxBy(sorted, (s) => s.seconds || 0), (v) => formatDuration(v));
     // Fastest pace is a minimum, so maximise its inverse.
     push('Fastest pace', maxBy(sorted, (s) => (s.distance > 0 && s.seconds > 0 ? s.distance / s.seconds : 0)),
       (v) => formatPace(1 / v));
-    push('Most distance (day)', bestDay(sorted, (s) => s.distance || 0), (v) => `${fmtNum(v)} ${DISTANCE_UNIT}`);
+    push('Most distance (day)', bestDay(sorted, (s) => s.distance || 0), (v) => fmtDistance(v));
   } else if (type === 'time') {
     push('Longest time', maxBy(sorted, (s) => s.seconds || 0), (v) => formatDuration(v));
     push('Most time (day)', bestDay(sorted, (s) => s.seconds || 0), (v) => formatDuration(v));
@@ -248,22 +278,23 @@ export function computeRecords(sets, type) {
 const sum = (arr, fn) => arr.reduce((a, s) => a + (fn(s) || 0), 0);
 const max = (arr, fn) => arr.reduce((a, s) => Math.max(a, fn(s) || 0), 0);
 
+// kind: how a stored value converts for display (weight, distance, pace, duration, reps).
 export const METRICS = {
   weight_reps: [
-    { key: 'e1rm', label: 'Estimated 1RM', unit: WEIGHT_UNIT, day: (d) => max(d, (s) => estimate1RM(s.weight, s.reps)) },
-    { key: 'maxWeight', label: 'Max weight', unit: WEIGHT_UNIT, day: (d) => max(d, (s) => (s.reps > 0 ? s.weight : 0)) },
-    { key: 'volume', label: 'Volume', unit: WEIGHT_UNIT, day: (d) => sum(d, (s) => s.weight * s.reps) },
-    { key: 'maxReps', label: 'Max reps', unit: 'reps', day: (d) => max(d, (s) => s.reps) },
+    { key: 'e1rm', label: 'Estimated 1RM', kind: 'weight', day: (d) => max(d, (s) => estimate1RM(s.weight, s.reps)) },
+    { key: 'maxWeight', label: 'Max weight', kind: 'weight', day: (d) => max(d, (s) => (s.reps > 0 ? s.weight : 0)) },
+    { key: 'volume', label: 'Volume', kind: 'weight', day: (d) => sum(d, (s) => s.weight * s.reps) },
+    { key: 'maxReps', label: 'Max reps', kind: 'reps', day: (d) => max(d, (s) => s.reps) },
   ],
   reps: [
-    { key: 'maxReps', label: 'Max reps', unit: 'reps', day: (d) => max(d, (s) => s.reps) },
-    { key: 'totalReps', label: 'Total reps', unit: 'reps', day: (d) => sum(d, (s) => s.reps) },
+    { key: 'maxReps', label: 'Max reps', kind: 'reps', day: (d) => max(d, (s) => s.reps) },
+    { key: 'totalReps', label: 'Total reps', kind: 'reps', day: (d) => sum(d, (s) => s.reps) },
   ],
   distance_time: [
-    { key: 'distance', label: 'Distance', unit: DISTANCE_UNIT, day: (d) => sum(d, (s) => s.distance) },
-    { key: 'time', label: 'Time', unit: 'duration', day: (d) => sum(d, (s) => s.seconds) },
+    { key: 'distance', label: 'Distance', kind: 'distance', day: (d) => sum(d, (s) => s.distance) },
+    { key: 'time', label: 'Time', kind: 'duration', day: (d) => sum(d, (s) => s.seconds) },
     {
-      key: 'pace', label: 'Pace', unit: 'pace',
+      key: 'pace', label: 'Pace', kind: 'pace',
       day: (d) => {
         const timed = d.filter((s) => s.distance > 0 && s.seconds > 0);
         const dist = sum(timed, (s) => s.distance);
@@ -272,27 +303,89 @@ export const METRICS = {
     },
   ],
   time: [
-    { key: 'maxTime', label: 'Longest set', unit: 'duration', day: (d) => max(d, (s) => s.seconds) },
-    { key: 'totalTime', label: 'Total time', unit: 'duration', day: (d) => sum(d, (s) => s.seconds) },
+    { key: 'maxTime', label: 'Longest set', kind: 'duration', day: (d) => max(d, (s) => s.seconds) },
+    { key: 'totalTime', label: 'Total time', kind: 'duration', day: (d) => sum(d, (s) => s.seconds) },
   ],
 };
 
-export function formatMetric(value, unit) {
-  if (unit === 'duration') return formatDuration(value);
-  if (unit === 'pace') return formatPace(value);
-  return `${fmtNum(value, 1)} ${unit}`;
+const TO_DISPLAY = { weight: weightOut, distance: distOut, pace: paceOut, duration: (v) => v, reps: (v) => v };
+
+// Unit label for a metric kind in the current units ('' for time-like kinds).
+export function kindUnit(kind) {
+  return { weight: units.weight, distance: units.distance, reps: 'reps' }[kind] || '';
 }
 
-// One point per workout day, skipping days where the metric is zero.
+// Formats a value that is already in display units.
+export function formatMetric(value, kind) {
+  if (kind === 'duration') return formatDuration(value);
+  if (kind === 'pace') return `${formatDuration(value)} /${units.distance}`;
+  return `${fmtNum(value, 1)} ${kindUnit(kind)}`;
+}
+
+// One point per workout day (display units), skipping days where the metric is zero.
 export function metricSeries(sets, type, metricKey) {
   const metric = (METRICS[type] || []).find((m) => m.key === metricKey);
   if (!metric) return [];
   const out = [];
   for (const [date, daySets] of groupByDate(sets)) {
     const value = metric.day(daySets);
-    if (value > 0) out.push({ date, value });
+    if (value > 0) out.push({ date, value: TO_DISPLAY[metric.kind](value) });
   }
   return out;
+}
+
+// ---------- routines & plans ----------
+
+// A routine item: { exerciseId, sets, reps, weight (lbs, optional), distance (mi), seconds }.
+export function describeTarget(item, type) {
+  const sets = item.sets || 1;
+  switch (type) {
+    case 'weight_reps':
+      return `${sets} × ${item.reps || 0}${item.weight ? ` @ ${fmtWeight(item.weight)}` : ''}`;
+    case 'reps':
+      return `${sets} × ${item.reps || 0}`;
+    case 'distance_time': {
+      const parts = [];
+      if (item.distance) parts.push(fmtDistance(item.distance));
+      if (item.seconds) parts.push(formatDuration(item.seconds));
+      return `${sets > 1 ? `${sets} × ` : ''}${parts.join(' in ') || 'cardio'}`;
+    }
+    case 'time':
+      return `${sets} × ${item.seconds ? formatDuration(item.seconds) : 'time'}`;
+    default:
+      return '';
+  }
+}
+
+// ---------- bodyweight ----------
+
+// entries: [{ date, weight (lbs) }]. Returns display-unit stats or null if empty.
+export function bodyStats(entries, today = todayISO()) {
+  if (!entries.length) return null;
+  const sorted = [...entries].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const latest = sorted[sorted.length - 1];
+  // Change versus the most recent entry on or before N days before the latest one.
+  const changeOver = (days) => {
+    const cutoff = addDays(latest.date, -days);
+    const base = [...sorted].reverse().find((e) => e.date <= cutoff);
+    return base ? weightOut(latest.weight) - weightOut(base.weight) : null;
+  };
+  const weights = sorted.map((e) => e.weight);
+  return {
+    latest: weightOut(latest.weight),
+    latestDate: latest.date,
+    change7: changeOver(7),
+    change30: changeOver(30),
+    min: weightOut(Math.min(...weights)),
+    max: weightOut(Math.max(...weights)),
+    daysSinceLatest: Math.round((fromISO(today) - fromISO(latest.date)) / 864e5),
+  };
+}
+
+export function formatChange(v) {
+  if (v == null) return '—';
+  const r = Number(v.toFixed(1));
+  return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${fmtNum(Math.abs(r), 1)} ${units.weight}`;
 }
 
 // ---------- export ----------
@@ -305,22 +398,23 @@ function csvCell(v) {
 }
 
 // Column layout follows FitNotes' CSV export so the data stays portable.
+// Values are written in the currently selected units.
 export function toCSV(sets, exercisesById, categoriesById) {
   const lines = [CSV_HEADER.join(',')];
   for (const s of [...sets].sort(compareSets)) {
     const ex = exercisesById.get(s.exerciseId);
     const cat = ex ? categoriesById.get(ex.categoryId) : null;
     const hasWeight = ex?.type === 'weight_reps';
-    const hasDistance = ex?.type === 'distance_time';
+    const hasDistance = ex?.type === 'distance_time' && s.distance;
     lines.push([
       s.date,
       ex?.name ?? 'Unknown',
       cat?.name ?? '',
-      hasWeight ? fmtNum(s.weight) : '',
-      hasWeight ? WEIGHT_UNIT : '',
+      hasWeight ? fmtNum(weightOut(s.weight)) : '',
+      hasWeight ? units.weight : '',
       s.reps || '',
-      hasDistance && s.distance ? fmtNum(s.distance) : '',
-      hasDistance && s.distance ? DISTANCE_UNIT : '',
+      hasDistance ? fmtNum(distOut(s.distance)) : '',
+      hasDistance ? units.distance : '',
       s.seconds ? formatDuration(s.seconds) : '',
       s.comment ?? '',
     ].map(csvCell).join(','));
@@ -329,17 +423,24 @@ export function toCSV(sets, exercisesById, categoriesById) {
 }
 
 export const BACKUP_FORMAT = 'gymlog-backup';
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 
 // Throws with a readable message when a parsed backup file is not usable.
+// Version 1 backups (no bodyweight or routines) are still accepted.
 export function checkBackup(obj) {
   if (!obj || obj.format !== BACKUP_FORMAT) throw new Error('This file is not a backup from this app.');
   if (obj.version > BACKUP_VERSION) throw new Error('This backup was made by a newer version of the app.');
   for (const key of ['categories', 'exercises', 'sets']) {
     if (!Array.isArray(obj[key])) throw new Error(`Backup is missing "${key}".`);
   }
+  for (const key of ['days', 'body', 'routines']) {
+    if (obj[key] != null && !Array.isArray(obj[key])) throw new Error(`Backup has an invalid "${key}".`);
+  }
   const exIds = new Set(obj.exercises.map((e) => e.id));
   const bad = obj.sets.find((s) => !isISODate(s.date) || !exIds.has(s.exerciseId));
   if (bad) throw new Error('Backup contains sets with an invalid date or exercise.');
+  if ((obj.body || []).some((b) => !isISODate(b.date) || !(b.weight > 0))) {
+    throw new Error('Backup contains an invalid bodyweight entry.');
+  }
   return obj;
 }

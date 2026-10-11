@@ -3,8 +3,15 @@ import assert from 'node:assert/strict';
 import {
   addDays, addMonths, monthGrid, isISODate, formatDuration, parseDuration, estimate1RM,
   formatSet, validateSet, prSetIds, computeRecords, metricSeries, toCSV, checkBackup,
-  BACKUP_FORMAT, BACKUP_VERSION,
+  BACKUP_FORMAT, BACKUP_VERSION, setUnits, weightIn, weightOut, distIn, distOut, formatPace,
+  describeTarget, bodyStats, formatChange, formatMetric, fmtNum,
 } from '../js/logic.js';
+
+// Runs fn with the given display units, always restoring the lbs/mi default.
+function withUnits(u, fn) {
+  setUnits(u);
+  try { fn(); } finally { setUnits({ weight: 'lbs', distance: 'mi' }); }
+}
 
 let n = 0;
 const set = (date, fields) => ({ id: `s${++n}`, date, order: n, exerciseId: 'e1', ...fields });
@@ -122,7 +129,88 @@ test('toCSV uses FitNotes-style columns and escapes text', () => {
 test('checkBackup rejects bad files', () => {
   assert.throws(() => checkBackup({}), /not a backup/);
   assert.throws(() => checkBackup({ format: BACKUP_FORMAT, version: BACKUP_VERSION + 1 }), /newer version/);
+  // A version 1 backup (no bodyweight/routines) is still accepted.
   const ok = { format: BACKUP_FORMAT, version: 1, categories: [], exercises: [{ id: 'e1' }], sets: [{ date: '2026-01-01', exerciseId: 'e1' }] };
   assert.equal(checkBackup(ok), ok);
   assert.throws(() => checkBackup({ ...ok, sets: [{ date: '2026-01-01', exerciseId: 'nope' }] }), /invalid/);
+  assert.throws(() => checkBackup({ ...ok, version: 2, body: [{ date: '2026-01-01', weight: 0 }] }), /bodyweight/);
+  assert.throws(() => checkBackup({ ...ok, routines: 'x' }), /routines/);
+});
+
+test('unit conversion round-trips exactly enough for display', () => {
+  withUnits({ weight: 'kg', distance: 'km' }, () => {
+    assert.equal(fmtNum(weightOut(weightIn(102.5))), '102.5');
+    assert.equal(fmtNum(distOut(distIn(5))), '5');
+    assert.equal(fmtNum(weightOut(225)), '102.06');
+    assert.equal(fmtNum(distOut(3.1)), '4.99');
+  });
+  assert.equal(weightOut(225), 225); // lbs mode is the identity
+});
+
+test('formatting follows the selected units', () => {
+  const lift = { weight: 220.462262185, reps: 5 }; // stored in lbs = 100 kg
+  withUnits({ weight: 'kg' }, () => {
+    assert.equal(formatSet(lift, 'weight_reps'), '100 kg × 5');
+    const rec = computeRecords([set('2026-01-01', lift)], 'weight_reps');
+    assert.equal(rec.rows.find((r) => r.label === 'Heaviest weight').value, '100 kg × 5');
+    assert.equal(rec.repMaxes[0].weight.toFixed(2), '100.00');
+  });
+  withUnits({ distance: 'km' }, () => {
+    assert.equal(formatSet({ distance: 1, seconds: 360 }, 'distance_time'), '1.61 km in 6:00');
+    // 8:00 per mile is 4:58 per km
+    assert.equal(formatPace(480), '4:58 /km');
+  });
+});
+
+test('metricSeries returns display units', () => {
+  const sets = [set('2026-06-01', { weight: 220.462262185, reps: 5 })];
+  withUnits({ weight: 'kg' }, () => {
+    assert.equal(fmtNum(metricSeries(sets, 'weight_reps', 'maxWeight')[0].value), '100');
+    assert.equal(formatMetric(100, 'weight'), '100 kg');
+  });
+  const runs = [set('2026-06-01', { distance: 2, seconds: 960 })]; // 8:00 /mi
+  withUnits({ distance: 'km' }, () => {
+    const pace = metricSeries(runs, 'distance_time', 'pace')[0].value;
+    assert.equal(formatMetric(pace, 'pace'), '4:58 /km');
+    assert.equal(fmtNum(metricSeries(runs, 'distance_time', 'distance')[0].value), '3.22');
+  });
+});
+
+test('CSV is written in the selected units', () => {
+  const exercises = new Map([['e1', { id: 'e1', name: 'Squat', categoryId: 'c1', type: 'weight_reps' }]]);
+  const categories = new Map([['c1', { id: 'c1', name: 'Legs' }]]);
+  withUnits({ weight: 'kg' }, () => {
+    const row = toCSV([set('2026-05-01', { weight: 220.462262185, reps: 5 })], exercises, categories).split('\r\n')[1];
+    assert.equal(row, '2026-05-01,Squat,Legs,100,kg,5,,,,');
+  });
+});
+
+test('describeTarget', () => {
+  assert.equal(describeTarget({ sets: 5, reps: 5 }, 'weight_reps'), '5 × 5');
+  assert.equal(describeTarget({ sets: 3, reps: 10, weight: 50 }, 'weight_reps'), '3 × 10 @ 50 lbs');
+  assert.equal(describeTarget({ sets: 1, distance: 3 }, 'distance_time'), '3 mi');
+  assert.equal(describeTarget({ sets: 3, seconds: 60 }, 'time'), '3 × 1:00');
+  withUnits({ weight: 'kg' }, () => {
+    assert.equal(describeTarget({ sets: 5, reps: 5, weight: 220.462262185 }, 'weight_reps'), '5 × 5 @ 100 kg');
+  });
+});
+
+test('bodyStats: latest, changes, range', () => {
+  assert.equal(bodyStats([]), null);
+  const entries = [
+    { date: '2026-09-01', weight: 190 },
+    { date: '2026-09-25', weight: 186 },
+    { date: '2026-10-01', weight: 185.5 },
+    { date: '2026-10-08', weight: 184 },
+  ];
+  const s = bodyStats(entries, '2026-10-11');
+  assert.equal(s.latest, 184);
+  assert.equal(s.change7, -1.5); // vs Oct 1
+  assert.equal(s.change30, -6); // vs Sep 1 (latest entry on/before Sep 8)
+  assert.equal(s.min, 184);
+  assert.equal(s.max, 190);
+  assert.equal(s.daysSinceLatest, 3);
+  assert.equal(formatChange(-1.5), '−1.5 lbs');
+  assert.equal(formatChange(0.04), '±0 lbs');
+  assert.equal(bodyStats([{ date: '2026-10-08', weight: 184 }]).change7, null);
 });

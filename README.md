@@ -5,7 +5,7 @@ workflow of the Android app FitNotes. It is a Progressive Web App (PWA): plain
 HTML/CSS/JavaScript, no build step, no account, no server. All data stays on your
 device in IndexedDB.
 
-Units: weight in **lbs**, distance in **miles**.
+Units: **lbs or kg** and **miles or km**, switchable at any time in Settings.
 
 ## Features
 
@@ -26,6 +26,16 @@ Units: weight in **lbs**, distance in **miles**.
   time and fastest pace.
 - **History and graphs** per exercise: estimated 1RM, max weight, volume, reps,
   distance, time or pace over 1M / 3M / 1Y / all.
+- **Routines**: build programmes of workouts (e.g. *5×5 → Workout A / Workout B*),
+  each a list of exercises with target sets × reps and an optional weight. Load
+  a workout onto any day: its exercises appear with a progress count
+  (e.g. "2/5 sets"), the entry screen pre-fills the target reps and your last weight,
+  and a *Next* button walks you through the workout. A sample 5×5 routine is included.
+- **Bodyweight tracker**: one entry per day with a note, current value,
+  7- and 30-day change, a trend graph and a history list.
+- **Units**: everything is stored in lbs and miles and converted for display,
+  so switching between lbs/kg and mi/km instantly re-expresses your whole history
+  (sets, records, graphs, bodyweight, routine targets) with no data loss.
 - **Calendar** with category-coloured dots on workout days.
 - **Backup / restore** (JSON) through the iOS share sheet (e.g. save to iCloud
   Drive), plus **CSV export** using FitNotes-style columns
@@ -72,7 +82,10 @@ Code layout:
 |---|---|
 | `js/logic.js` | Pure functions: dates, formatting, PRs, records, graph series, CSV, backup validation |
 | `js/db.js` | IndexedDB storage with an in-memory mirror; seed data on first run |
-| `js/main.js` | Hash router and all screens |
+| `js/main.js` | Hash router; log, exercise, calendar and settings screens |
+| `js/ui.js` | Shared UI helpers (shell, steppers, toasts, share/download) |
+| `js/views/routines.js` | Routines, workout editor, loading a workout onto a day |
+| `js/views/body.js` | Bodyweight tracker |
 | `js/timer.js` | Rest timer (absolute end time, WebAudio beep) |
 | `js/chart.js` | Dependency-free SVG line chart |
 | `sw.js` | Service worker for offline use |
@@ -82,5 +95,5 @@ Code layout:
 - iOS suspends web apps in the background, so the rest-timer beep only plays when
   the app is open. The countdown is still correct when you return.
 - No cloud sync. Use backup/restore to move between devices.
-- Not yet built: routines/templates, a bodyweight tracker, a plate calculator,
-  kg/km units, and FitNotes CSV import.
+- Not yet built: a plate calculator, automatic progression (e.g. +5 lbs after a
+  successful 5×5), and FitNotes CSV import.

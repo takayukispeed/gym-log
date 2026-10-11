@@ -47,6 +47,7 @@ export const SEED_EXERCISES = [
   ['Leg Extension', 'Legs', 'weight_reps'],
   ['Lying Leg Curl', 'Legs', 'weight_reps'],
   ['Walking Lunge', 'Legs', 'weight_reps'],
+  ['Dumbbell Lunge', 'Legs', 'weight_reps'],
   ['Standing Calf Raise', 'Legs', 'weight_reps'],
   ['Overhead Press', 'Shoulders', 'weight_reps'],
   ['Seated Dumbbell Press', 'Shoulders', 'weight_reps'],
@@ -58,3 +59,28 @@ export const SEED_EXERCISES = [
   ['Skull Crusher', 'Triceps', 'weight_reps'],
   ['Overhead Triceps Extension', 'Triceps', 'weight_reps'],
 ];
+
+// Sample routine: a 5×5 programme alternating two workouts.
+// Items reference exercises by name; missing exercises are created on seeding.
+// [exercise name, category, sets, reps]
+export const SAMPLE_ROUTINE = {
+  name: '5×5',
+  workouts: [
+    {
+      name: 'Workout A',
+      items: [
+        ['Flat Barbell Bench Press', 'Chest', 5, 5],
+        ['Barbell Squat', 'Legs', 5, 5],
+        ['Overhead Press', 'Shoulders', 5, 5],
+      ],
+    },
+    {
+      name: 'Workout B',
+      items: [
+        ['Deadlift', 'Back', 5, 5],
+        ['Barbell Row', 'Back', 5, 5],
+        ['Dumbbell Lunge', 'Legs', 3, 10],
+      ],
+    },
+  ],
+};
