@@ -101,6 +101,33 @@ try {
   await page.click('#timer button[data-t="stop"]');
   assert.ok(await page.isHidden('#timer'));
 
+  step('rowing shows a 500 m split, watts and best times');
+  await page.click('.header .back');
+  await page.click('.header .plus');
+  await page.fill('#search', 'rowing');
+  await page.click('#results >> text=Rowing Machine');
+  await page.fill('#f-distance', '2000');
+  await page.fill('#f-m', '7');
+  await page.fill('#f-s', '30');
+  await page.click('#set-form button[type=submit]');
+  await page.waitForSelector('#sets .split');
+  assert.equal(await page.textContent('#sets .split'), '1:52.5 /500m · 246 W');
+  await page.click('#timer button[data-t="stop"]');
+  await page.click('.seg >> text=Records');
+  await page.waitForSelector('.records');
+  assert.match(await page.textContent('#tab-body'), /Best times[\s\S]*2000 m[\s\S]*7:30/);
+  assert.match(await page.textContent('#tab-body'), /Fastest pace[\s\S]*1:52\.5 \/500m/);
+  await page.click('.seg >> text=Graph');
+  await page.click('.chip >> text=Pace');
+  await page.waitForSelector('svg.chart circle.dot');
+  assert.match(await page.textContent('.chart-title'), /\/500m, faster is higher/);
+  await shot('03b-rowing');
+  // Remove it again so later steps see the same day as before.
+  await page.click('.seg >> text=Track');
+  await page.click('#sets li');
+  await page.click('#del');
+  await page.waitForSelector('.toast.show >> text=Set deleted');
+
   step('day view lists both exercises and reorders');
   await page.click('.header .back');
   await page.waitForSelector('.ex-card');

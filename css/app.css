@@ -280,3 +280,6 @@ body.timer-on .main { padding-bottom: calc(var(--tabs-h) + var(--timer-h) + env(
   background: var(--accent); color: var(--accent-text); font-weight: 600;
   box-shadow: 0 4px 12px rgb(0 0 0 / .25);
 }
+
+.split { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.setlist.big .split { margin-left: auto; }

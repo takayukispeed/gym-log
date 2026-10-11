@@ -5,6 +5,7 @@ import {
   formatSet, validateSet, prSetIds, computeRecords, metricSeries, toCSV, checkBackup,
   BACKUP_FORMAT, BACKUP_VERSION, setUnits, weightIn, weightOut, distIn, distOut, formatPace,
   describeTarget, bodyStats, formatChange, formatMetric, fmtNum, distUnitOf, paceUnit,
+  displayOf, setSplit, formatPaceValue, wattsFromPace,
 } from '../js/logic.js';
 
 // Most tests below are written in lbs/mi; withUnits switches temporarily.
@@ -259,4 +260,58 @@ test('CSV uses each exercise\'s own distance unit', () => {
     assert.equal(rows[1], '2026-07-03,Rowing Machine,Cardio,,,,2000,m,7:30,');
     assert.equal(rows[2], '2026-07-03,Running,Cardio,,,,5,km,25:00,');
   });
+});
+
+const M = 1609.344; // metres per mile
+
+test('rowing split formatting to tenths', () => {
+  assert.equal(formatPaceValue(112.5, '500m'), '1:52.5');
+  assert.equal(formatPaceValue(119.96, '500m'), '2:00.0');
+  assert.equal(formatPaceValue(65.04, '500m'), '1:05.0');
+  assert.equal(formatPaceValue(300, 'km'), '5:00');
+});
+
+test('watts follow the Concept2 formula', () => {
+  // 2:00 /500m = 0.24 s/m -> 2.8 / 0.24^3 = 202.5 W
+  assert.equal(Math.round(wattsFromPace(0.24 * M)), 203);
+});
+
+test('setSplit uses the exercise display options', () => {
+  const row = { distance: 2000 / M, seconds: 450 }; // 2000 m in 7:30
+  const rower = displayOf({ type: 'distance_time', distanceUnit: 'm', paceUnit: '500m', showWatts: true });
+  assert.deepEqual(rower, { du: 'm', pu: '500m', watts: true });
+  assert.equal(setSplit(row, rower), '1:52.5 /500m · 246 W');
+  assert.equal(setSplit(row, { du: 'm', pu: 'km', watts: false }), '3:45 /km');
+  assert.equal(setSplit({ distance: 3, seconds: 0 }, rower), '');
+  withUnits({ distance: 'mi' }, () => {
+    assert.deepEqual(displayOf({ type: 'distance_time' }), { du: 'mi', pu: 'mi', watts: false });
+  });
+});
+
+test('pace records and series honour the 500 m split', () => {
+  const rower = { du: 'm', pu: '500m', watts: false };
+  const sets = [
+    set('2026-08-01', { distance: 2000 / M, seconds: 460 }),
+    set('2026-08-03', { distance: 2000 / M, seconds: 450 }),
+    set('2026-08-05', { distance: 5000 / M, seconds: 1200 }),
+  ];
+  const rec = computeRecords(sets, 'distance_time', rower);
+  assert.equal(rec.rows.find((r) => r.label === 'Fastest pace').value, '1:52.5 /500m');
+  assert.deepEqual(rec.bestTimes.map((b) => [b.label, b.seconds, b.date]), [
+    ['2000 m', 450, '2026-08-03'],
+    ['5000 m', 1200, '2026-08-05'],
+  ]);
+  const pace = metricSeries(sets, 'distance_time', 'pace', rower);
+  assert.equal(formatMetric(pace[1].value, 'pace', rower), '1:52.5 /500m');
+});
+
+test('running best times use running distances', () => {
+  const run = { du: 'km', pu: 'km', watts: false };
+  const sets = [
+    set('2026-09-01', { distance: 5 / 1.609344, seconds: 1500 }),
+    set('2026-09-02', { distance: 5.5 / 1.609344, seconds: 1600 }), // not a standard distance
+    set('2026-09-03', { distance: 21.0975 / 1.609344, seconds: 6600 }),
+  ];
+  assert.deepEqual(computeRecords(sets, 'distance_time', run).bestTimes.map((b) => b.label), ['5 km', 'Half marathon']);
+  assert.deepEqual(computeRecords(sets, 'weight_reps').bestTimes, []);
 });

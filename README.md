@@ -37,6 +37,11 @@ default, and each cardio exercise can pick its own unit). Switchable at any time
 - **Units**: everything is stored in lbs and miles and converted for display,
   so switching between lbs/kg or m/km/mi instantly re-expresses your whole history
   (sets, records, graphs, bodyweight, routine targets) with no data loss.
+- **Cardio splits**: each set shows its pace next to it. Pace can be per 500 m
+  (rowing split, to the tenth of a second), per km or per mile, chosen per exercise,
+  with optional watts (Concept2 formula, 2.80 ÷ pace³). Records include best times at
+  standard distances (500 m–10 km for rowing; 1 km to marathon for running), and
+  pace graphs plot faster times higher. Rowing Machine defaults to /500 m with watts.
 - **Calendar** with category-coloured dots on workout days.
 - **Backup / restore** (JSON) through the iOS share sheet (e.g. save to iCloud
   Drive), plus **CSV export** using FitNotes-style columns

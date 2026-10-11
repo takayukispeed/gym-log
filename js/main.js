@@ -7,7 +7,8 @@ import {
   todayISO, addDays, addMonths, isISODate, formatDayLong, formatDayCompact, formatMonth, monthGrid,
   fmtNum, formatDuration, formatSet, formatMetric, kindUnit, validateSet, describeTarget,
   prSetIds, computeRecords, metricSeries, groupByDate, toCSV,
-  weightOut, weightIn, distOut, distIn, wUnit, dUnit, distUnitOf, paceUnit,
+  weightOut, weightIn, distOut, distIn, wUnit, dUnit, distUnitOf, paceUnit, displayOf, setSplit, paceLabel,
+  PACE_UNITS,
 } from './logic.js';
 import {
   $, $$, esc, nav, go, toast, renderShell, colourOf, exerciseLink, stepper, bindSteppers,
@@ -267,6 +268,7 @@ function renderTrack(body, ex, date) {
           <li class="${s.id === selectedId ? 'selected' : ''}" data-id="${s.id}">
             <span class="n">${i + 1}</span>
             <span class="v">${esc(formatSet(s, ex.type, distUnitOf(ex)))}</span>
+            ${setSplit(s, displayOf(ex)) ? `<span class="split">${esc(setSplit(s, displayOf(ex)))}</span>` : ''}
             ${prs.has(s.id) ? '<span class="pr" title="Personal record">🏆</span>' : ''}
             ${s.comment ? `<span class="cm">${esc(s.comment)}</span>` : ''}
           </li>`).join('')}
@@ -317,12 +319,12 @@ function renderHistory(body, ex, currentDate) {
   body.innerHTML = days.length ? days.map(([date, daySets]) => `
     <div class="card history-day ${date === currentDate ? 'current' : ''}">
       <a class="history-date" href="#/day/${date}">${esc(formatDayLong(date))}</a>
-      <ol class="setlist">${daySets.map((s) => `<li>${esc(formatSet(s, ex.type, distUnitOf(ex)))}${prs.has(s.id) ? ' <span class="pr">🏆</span>' : ''}${s.comment ? ` <span class="cm">${esc(s.comment)}</span>` : ''}</li>`).join('')}</ol>
+      <ol class="setlist">${daySets.map((s) => `<li>${esc(formatSet(s, ex.type, distUnitOf(ex)))}${setSplit(s, displayOf(ex)) ? ` <span class="split">${esc(setSplit(s, displayOf(ex)))}</span>` : ''}${prs.has(s.id) ? ' <span class="pr">🏆</span>' : ''}${s.comment ? ` <span class="cm">${esc(s.comment)}</span>` : ''}</li>`).join('')}</ol>
     </div>`).join('') : '<p class="empty">No history for this exercise yet.</p>';
 }
 
 function renderGraph(body, ex) {
-  const du = distUnitOf(ex);
+  const du = displayOf(ex);
   const metrics = METRICS[ex.type];
   const key = app.graphMetric[ex.id] || metrics[0].key;
   const metric = metrics.find((m) => m.key === key) || metrics[0];
@@ -336,23 +338,30 @@ function renderGraph(body, ex) {
   body.innerHTML = `
     <div class="chips">${metrics.map((m) => `<button class="chip ${m.key === metric.key ? 'active' : ''}" data-metric="${m.key}">${m.label}</button>`).join('')}</div>
     ${rangeChips(range[0])}
-    <div class="card"><h2 class="chart-title">${esc(metric.label)}${unit ? ` (${unit})` : metric.kind === 'pace' ? ` (min /${paceUnit(du)})` : ''}</h2><div id="chart"></div></div>`;
+    <div class="card"><h2 class="chart-title">${esc(metric.label)}${unit ? ` (${unit})` : metric.kind === 'pace' ? ` (${paceLabel(du.pu)}, faster is higher)` : ''}</h2><div id="chart"></div></div>`;
   const timeLike = metric.kind === 'duration' || metric.kind === 'pace';
   lineChart($('#chart', body), points, {
     format: (v) => formatMetric(v, metric.kind, du),
     tickFormat: timeLike ? (v) => formatDuration(v) : (v) => fmtNum(v, 1),
+    invert: metric.kind === 'pace',
   });
   $$('[data-metric]', body).forEach((b) => b.addEventListener('click', () => { app.graphMetric[ex.id] = b.dataset.metric; renderGraph(body, ex); }));
   $$('[data-range]', body).forEach((b) => b.addEventListener('click', () => { app.graphRange = b.dataset.range; renderGraph(body, ex); }));
 }
 
 function renderRecords(body, ex) {
-  const { rows, repMaxes } = computeRecords(db.setsFor(ex.id), ex.type, distUnitOf(ex));
+  const { rows, repMaxes, bestTimes } = computeRecords(db.setsFor(ex.id), ex.type, displayOf(ex));
   if (!rows.length) { body.innerHTML = '<p class="empty">No records yet.</p>'; return; }
   body.innerHTML = `
     <div class="card"><table class="records">
       ${rows.map((r) => `<tr><th>${esc(r.label)}</th><td>${esc(r.value)}<a class="date" href="#/day/${r.date}">${esc(formatDayLong(r.date))}</a></td></tr>`).join('')}
     </table></div>
+    ${bestTimes.length ? `
+      <div class="card"><h2 class="chart-title">Best times</h2>
+        <table class="records">
+          <tr><th>Distance</th><th>Time</th><th>Date</th></tr>
+          ${bestTimes.map((b) => `<tr><td>${esc(b.label)}</td><td>${formatDuration(b.seconds)}<span class="muted date">${esc(b.split)}</span></td><td><a href="#/day/${b.date}">${esc(formatDayLong(b.date))}</a></td></tr>`).join('')}
+        </table></div>` : ''}
     ${repMaxes.length ? `
       <div class="card"><h2 class="chart-title">Rep maxes</h2>
         <p class="hint">Heaviest weight lifted for at least this many reps.</p>
@@ -448,13 +457,22 @@ function viewExerciseEdit(id, params) {
             ${Object.entries(DISTANCE_UNITS).map(([k, l]) => `<option value="${k}" ${ex.distanceUnit === k ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </label>
+        <label class="field" id="pu-field" ${ex.type === 'distance_time' ? '' : 'hidden'}><span>Pace shown</span>
+          <select id="pu">
+            <option value="">Default (${paceLabel(paceUnit(distUnitOf(ex)))})</option>
+            ${Object.entries(PACE_UNITS).map(([k, l]) => `<option value="${k}" ${ex.paceUnit === k ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </label>
+        <label class="toggle" id="watts-field" ${ex.type === 'distance_time' ? '' : 'hidden'}><input id="watts" type="checkbox" ${ex.showWatts ? 'checked' : ''}> Show watts (rowing machines)</label>
         ${setCount ? '<p class="hint">Changing the type of an exercise with logged sets hides values the new type does not use.</p>' : ''}
         <label class="field"><span>Notes</span><textarea id="notes" rows="2" placeholder="Seat height, grip, cues…">${esc(ex.notes)}</textarea></label>
         <button class="btn primary" type="submit">Save</button>
       </form>
       ${isNew ? '' : `<button class="btn danger" id="delete">Delete exercise${setCount ? ` and its ${setCount} set${setCount === 1 ? '' : 's'}` : ''}</button>`}`,
   });
-  $('#type').addEventListener('change', (e) => { $('#du-field').hidden = e.target.value !== 'distance_time'; });
+  $('#type').addEventListener('change', (e) => {
+    ['#du-field', '#pu-field', '#watts-field'].forEach((id) => { $(id).hidden = e.target.value !== 'distance_time'; });
+  });
   $('#ex-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('#name').value.trim();
@@ -465,6 +483,8 @@ function viewExerciseEdit(id, params) {
     await db.saveExercise({
       ...ex, name, categoryId: $('#cat').value, type, notes: $('#notes').value.trim(),
       distanceUnit: type === 'distance_time' ? $('#du').value : '',
+      paceUnit: type === 'distance_time' ? $('#pu').value : '',
+      showWatts: type === 'distance_time' && $('#watts').checked,
     });
     toast('Exercise saved');
     go(returnTo);

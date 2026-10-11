@@ -27,7 +27,8 @@ function niceTicks(min, maxV, count = 4) {
 }
 
 // points: [{date, value}], format: value -> string, tickFormat: value -> short string
-export function lineChart(container, points, { format, tickFormat = format }) {
+// invert: draw smaller values higher (for pace, where lower is better).
+export function lineChart(container, points, { format, tickFormat = format, invert = false }) {
   container.innerHTML = '';
   if (points.length === 0) {
     container.innerHTML = '<p class="empty">No data yet for this measure.</p>';
@@ -47,7 +48,8 @@ export function lineChart(container, points, { format, tickFormat = format }) {
   const yMin = ticks[0];
   const yMax = ticks[ticks.length - 1];
   const x = (t) => m.left + (xMax === xMin ? iw / 2 : ((t - xMin) / (xMax - xMin)) * iw);
-  const y = (v) => m.top + ih - ((v - yMin) / (yMax - yMin)) * ih;
+  const frac = (v) => (v - yMin) / (yMax - yMin);
+  const y = (v) => (invert ? m.top + frac(v) * ih : m.top + ih - frac(v) * ih);
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'chart', role: 'img' });
   for (const t of ticks) {

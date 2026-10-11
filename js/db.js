@@ -104,6 +104,18 @@ export async function init() {
   setUnits({ weight: state.settings.weightUnit, distance: state.settings.distanceUnit });
   if (!meta.some((m) => m.key === 'seeded')) await seed();
   if (!meta.some((m) => m.key === 'seededRoutines')) await seedRoutines();
+  if (!meta.some((m) => m.key === 'rowingDefaults')) await applyRowingDefaults();
+}
+
+// Rowing Machine shows splits per 500 m with watts, as on an erg monitor.
+async function applyRowingDefaults() {
+  const rower = [...state.exercises.values()].find((e) => e.name.toLowerCase() === 'rowing machine');
+  const update = rower && rower.paceUnit === undefined ? { ...rower, paceUnit: '500m', showWatts: true } : null;
+  await tx(['exercises', 'meta'], 'readwrite', (t) => {
+    if (update) t.objectStore('exercises').put(update);
+    t.objectStore('meta').put({ key: 'rowingDefaults', value: true });
+  });
+  if (update) state.exercises.set(update.id, update);
 }
 
 async function seed() {
@@ -365,6 +377,7 @@ export async function importBackup(obj) {
     t.objectStore('meta').put({ key: 'seeded', value: true });
     t.objectStore('meta').put({ key: 'seededRoutines', value: true });
     t.objectStore('meta').put({ key: 'metresDefault', value: true });
+    t.objectStore('meta').put({ key: 'rowingDefaults', value: true });
   });
   const keyOf = { days: 'date', body: 'date' };
   for (const s of DATA_STORES) {
