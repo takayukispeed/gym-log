@@ -3,11 +3,11 @@ import { state } from './db.js';
 import * as timer from './timer.js';
 import { lineChart } from './chart.js';
 import {
-  TYPES, METRICS, DEFAULT_WEIGHT_STEP, LB_PER_KG, KM_PER_MI,
+  TYPES, METRICS, DEFAULT_WEIGHT_STEP, LB_PER_KG, KM_PER_MI, DISTANCE_UNITS, DISTANCE_STEP,
   todayISO, addDays, addMonths, isISODate, formatDayLong, formatDayCompact, formatMonth, monthGrid,
   fmtNum, formatDuration, formatSet, formatMetric, kindUnit, validateSet, describeTarget,
   prSetIds, computeRecords, metricSeries, groupByDate, toCSV,
-  weightOut, weightIn, distOut, distIn, wUnit, dUnit,
+  weightOut, weightIn, distOut, distIn, wUnit, dUnit, distUnitOf, paceUnit,
 } from './logic.js';
 import {
   $, $$, esc, nav, go, toast, renderShell, colourOf, exerciseLink, stepper, bindSteppers,
@@ -52,9 +52,9 @@ function viewDay(date) {
       <div class="card ex-card" style="--cat:${esc(colourOf(ex))}">
         <a class="ex-card-main" href="#/ex/${ex.id}/${date}/track">
           <div class="ex-name">${esc(ex.name)}${plan ? `<span class="progress-pill ${done ? 'done' : ''}">${done ? '✓ ' : ''}${sets.length}/${plan.sets || 1} sets</span>` : ''}</div>
-          ${plan ? `<div class="target">Target ${esc(describeTarget(plan, ex.type))}</div>` : ''}
+          ${plan ? `<div class="target">Target ${esc(describeTarget(plan, ex.type, distUnitOf(ex)))}</div>` : ''}
           <ol class="setlist">
-            ${sets.map((s) => `<li>${esc(formatSet(s, ex.type))}${prs.has(s.id) ? ' <span class="pr" title="Personal record">🏆</span>' : ''}${s.comment ? ' <span class="cm" title="Comment">💬</span>' : ''}</li>`).join('')}
+            ${sets.map((s) => `<li>${esc(formatSet(s, ex.type, distUnitOf(ex)))}${prs.has(s.id) ? ' <span class="pr" title="Personal record">🏆</span>' : ''}${s.comment ? ' <span class="cm" title="Comment">💬</span>' : ''}</li>`).join('')}
           </ol>
         </a>
         ${edit ? `<div class="reorder">
@@ -199,6 +199,7 @@ function viewExercise(exerciseId, date, tab) {
 
 function renderTrack(body, ex, date) {
   const fields = TYPES[ex.type].fields;
+  const du = distUnitOf(ex);
   const plan = db.planFor(date, ex.id);
   let selectedId = null;
 
@@ -221,7 +222,7 @@ function renderTrack(body, ex, date) {
     const parts = [];
     if (fields.includes('weight')) parts.push(stepper('f-weight', `Weight (${wUnit()})`, fmtNum(weightOut(values.weight ?? 0)), { step: state.settings.weightStep }));
     if (fields.includes('reps')) parts.push(stepper('f-reps', 'Reps', values.reps ?? 0, { step: 1, inputmode: 'numeric' }));
-    if (fields.includes('distance')) parts.push(stepper('f-distance', `Distance (${dUnit()})`, fmtNum(distOut(values.distance ?? 0)), { step: state.settings.distanceStep }));
+    if (fields.includes('distance')) parts.push(stepper('f-distance', `Distance (${du})`, fmtNum(distOut(values.distance ?? 0, du), du === 'm' ? 0 : 2), { step: DISTANCE_STEP[du] }));
     if (fields.includes('seconds')) parts.push(durationInputs(values.seconds));
     return parts.join('');
   }
@@ -230,7 +231,7 @@ function renderTrack(body, ex, date) {
     const out = {};
     if (fields.includes('weight')) out.weight = weightIn(readNumber(body, 'f-weight'));
     if (fields.includes('reps')) out.reps = Math.round(readNumber(body, 'f-reps'));
-    if (fields.includes('distance')) out.distance = distIn(readNumber(body, 'f-distance'));
+    if (fields.includes('distance')) out.distance = distIn(readNumber(body, 'f-distance'), du);
     if (fields.includes('seconds')) out.seconds = readDuration(body);
     return out;
   }
@@ -243,7 +244,7 @@ function renderTrack(body, ex, date) {
     const complete = plan && sets.length >= target;
     body.innerHTML = `
       ${plan ? `<div class="plan-bar ${complete ? 'done' : ''}">
-        <span>Target <strong>${esc(describeTarget(plan, ex.type))}</strong></span>
+        <span>Target <strong>${esc(describeTarget(plan, ex.type, distUnitOf(ex)))}</strong></span>
         <span>${complete ? '✓ ' : ''}${sets.length}/${target} sets</span>
       </div>` : ''}
       <form id="set-form" class="card track" autocomplete="off">
@@ -265,7 +266,7 @@ function renderTrack(body, ex, date) {
         ${sets.map((s, i) => `
           <li class="${s.id === selectedId ? 'selected' : ''}" data-id="${s.id}">
             <span class="n">${i + 1}</span>
-            <span class="v">${esc(formatSet(s, ex.type))}</span>
+            <span class="v">${esc(formatSet(s, ex.type, distUnitOf(ex)))}</span>
             ${prs.has(s.id) ? '<span class="pr" title="Personal record">🏆</span>' : ''}
             ${s.comment ? `<span class="cm">${esc(s.comment)}</span>` : ''}
           </li>`).join('')}
@@ -316,28 +317,29 @@ function renderHistory(body, ex, currentDate) {
   body.innerHTML = days.length ? days.map(([date, daySets]) => `
     <div class="card history-day ${date === currentDate ? 'current' : ''}">
       <a class="history-date" href="#/day/${date}">${esc(formatDayLong(date))}</a>
-      <ol class="setlist">${daySets.map((s) => `<li>${esc(formatSet(s, ex.type))}${prs.has(s.id) ? ' <span class="pr">🏆</span>' : ''}${s.comment ? ` <span class="cm">${esc(s.comment)}</span>` : ''}</li>`).join('')}</ol>
+      <ol class="setlist">${daySets.map((s) => `<li>${esc(formatSet(s, ex.type, distUnitOf(ex)))}${prs.has(s.id) ? ' <span class="pr">🏆</span>' : ''}${s.comment ? ` <span class="cm">${esc(s.comment)}</span>` : ''}</li>`).join('')}</ol>
     </div>`).join('') : '<p class="empty">No history for this exercise yet.</p>';
 }
 
 function renderGraph(body, ex) {
+  const du = distUnitOf(ex);
   const metrics = METRICS[ex.type];
   const key = app.graphMetric[ex.id] || metrics[0].key;
   const metric = metrics.find((m) => m.key === key) || metrics[0];
   const range = RANGES.find((r) => r[0] === app.graphRange) || RANGES[3];
-  let points = metricSeries(db.setsFor(ex.id), ex.type, metric.key);
+  let points = metricSeries(db.setsFor(ex.id), ex.type, metric.key, du);
   if (range[2]) {
     const cutoff = addDays(todayISO(), -range[2]);
     points = points.filter((p) => p.date >= cutoff);
   }
-  const unit = kindUnit(metric.kind);
+  const unit = kindUnit(metric.kind, du);
   body.innerHTML = `
     <div class="chips">${metrics.map((m) => `<button class="chip ${m.key === metric.key ? 'active' : ''}" data-metric="${m.key}">${m.label}</button>`).join('')}</div>
     ${rangeChips(range[0])}
-    <div class="card"><h2 class="chart-title">${esc(metric.label)}${unit ? ` (${unit})` : metric.kind === 'pace' ? ` (min /${dUnit()})` : ''}</h2><div id="chart"></div></div>`;
+    <div class="card"><h2 class="chart-title">${esc(metric.label)}${unit ? ` (${unit})` : metric.kind === 'pace' ? ` (min /${paceUnit(du)})` : ''}</h2><div id="chart"></div></div>`;
   const timeLike = metric.kind === 'duration' || metric.kind === 'pace';
   lineChart($('#chart', body), points, {
-    format: (v) => formatMetric(v, metric.kind),
+    format: (v) => formatMetric(v, metric.kind, du),
     tickFormat: timeLike ? (v) => formatDuration(v) : (v) => fmtNum(v, 1),
   });
   $$('[data-metric]', body).forEach((b) => b.addEventListener('click', () => { app.graphMetric[ex.id] = b.dataset.metric; renderGraph(body, ex); }));
@@ -345,7 +347,7 @@ function renderGraph(body, ex) {
 }
 
 function renderRecords(body, ex) {
-  const { rows, repMaxes } = computeRecords(db.setsFor(ex.id), ex.type);
+  const { rows, repMaxes } = computeRecords(db.setsFor(ex.id), ex.type, distUnitOf(ex));
   if (!rows.length) { body.innerHTML = '<p class="empty">No records yet.</p>'; return; }
   body.innerHTML = `
     <div class="card"><table class="records">
@@ -440,19 +442,30 @@ function viewExerciseEdit(id, params) {
         <label class="field"><span>Type</span>
           <select id="type">${Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${k === ex.type ? 'selected' : ''}>${t.label}</option>`).join('')}</select>
         </label>
+        <label class="field" id="du-field" ${ex.type === 'distance_time' ? '' : 'hidden'}><span>Distance unit</span>
+          <select id="du">
+            <option value="">Default (${dUnit()})</option>
+            ${Object.entries(DISTANCE_UNITS).map(([k, l]) => `<option value="${k}" ${ex.distanceUnit === k ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </label>
         ${setCount ? '<p class="hint">Changing the type of an exercise with logged sets hides values the new type does not use.</p>' : ''}
         <label class="field"><span>Notes</span><textarea id="notes" rows="2" placeholder="Seat height, grip, cues…">${esc(ex.notes)}</textarea></label>
         <button class="btn primary" type="submit">Save</button>
       </form>
       ${isNew ? '' : `<button class="btn danger" id="delete">Delete exercise${setCount ? ` and its ${setCount} set${setCount === 1 ? '' : 's'}` : ''}</button>`}`,
   });
+  $('#type').addEventListener('change', (e) => { $('#du-field').hidden = e.target.value !== 'distance_time'; });
   $('#ex-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('#name').value.trim();
     if (!name) return toast('Enter a name.');
     const dupe = [...state.exercises.values()].find((x) => x.id !== ex.id && x.name.toLowerCase() === name.toLowerCase());
     if (dupe) return toast('An exercise with that name already exists.');
-    await db.saveExercise({ ...ex, name, categoryId: $('#cat').value, type: $('#type').value, notes: $('#notes').value.trim() });
+    const type = $('#type').value;
+    await db.saveExercise({
+      ...ex, name, categoryId: $('#cat').value, type, notes: $('#notes').value.trim(),
+      distanceUnit: type === 'distance_time' ? $('#du').value : '',
+    });
     toast('Exercise saved');
     go(returnTo);
   });
@@ -534,8 +547,9 @@ async function viewSettings() {
         <h2>Units</h2>
         <p class="hint">Switching converts everything already logged (sets, records, graphs, bodyweight, routine targets). Nothing is lost.</p>
         <div class="field"><span>Weight</span>${segmented('weightUnit', [['lbs', 'Pounds (lbs)'], ['kg', 'Kilograms (kg)']], s.weightUnit)}</div>
-        <div class="field"><span>Distance</span>${segmented('distanceUnit', [['mi', 'Miles (mi)'], ['km', 'Kilometres (km)']], s.distanceUnit)}</div>
-        <p class="hint">1 kg = ${fmtNum(LB_PER_KG, 4)} lbs · 1 mi = ${fmtNum(KM_PER_MI, 4)} km</p>
+        <div class="field"><span>Distance (default)</span>${segmented('distanceUnit', Object.entries(DISTANCE_UNITS).map(([k]) => [k, k === 'm' ? 'Metres' : k === 'km' ? 'Kilometres' : 'Miles']), s.distanceUnit)}</div>
+        <p class="hint">Any cardio exercise can use its own unit instead: Settings → Exercises → the exercise → Distance unit.</p>
+        <p class="hint">1 kg = ${fmtNum(LB_PER_KG, 4)} lbs · 1 mi = ${fmtNum(KM_PER_MI, 4)} km = ${fmtNum(KM_PER_MI * 1000, 0)} m</p>
       </form>
       <form class="card form" id="settings">
         <h2>Rest timer</h2>
@@ -544,7 +558,6 @@ async function viewSettings() {
         <label class="toggle"><input id="sound" type="checkbox" ${s.timerSound ? 'checked' : ''}> Beep when rest is over</label>
         <h2>Entry</h2>
         <label class="field"><span>Weight increment (${wUnit()})</span><input id="wstep" type="number" inputmode="decimal" min="0.25" step="0.25" value="${s.weightStep}"></label>
-        <label class="field"><span>Distance increment (${dUnit()})</span><input id="dstep" type="number" inputmode="decimal" min="0.01" step="0.01" value="${s.distanceStep}"></label>
       </form>
       <div class="card form">
         <h2>Your data</h2>
@@ -557,7 +570,7 @@ async function viewSettings() {
         <input type="file" id="restore-file" accept="application/json,.json" hidden>
         <p class="hint">${state.sets.size} sets · ${state.body.size} bodyweight entries · ${state.routines.size} routines · ${state.exercises.size} exercises</p>
       </div>
-      <p class="hint center">Gym Log · weights in ${wUnit()}, distances in ${dUnit()}</p>`,
+      <p class="hint center">Gym Log · weights in ${wUnit()}, distances in ${dUnit()} by default</p>`,
   });
 
   $('#units').addEventListener('change', async () => {
@@ -577,7 +590,6 @@ async function viewSettings() {
       autoStartTimer: $('#auto').checked,
       timerSound: $('#sound').checked,
       weightStep: num('#wstep', 0.25, 100),
-      distanceStep: num('#dstep', 0.01, 10),
     });
     timer.setSound(state.settings.timerSound);
     toast('Settings saved');

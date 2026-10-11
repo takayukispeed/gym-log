@@ -11,31 +11,41 @@ export const TYPES = {
 // ---------- units ----------
 // Values are always STORED in pounds and miles. They are converted only when
 // shown or typed in, so switching units never alters or loses data.
+// Distance has a default unit (metres unless changed) that any distance
+// exercise can override with its own `distanceUnit`.
 
 export const LB_PER_KG = 2.20462262185;
 export const KM_PER_MI = 1.609344;
 
-const units = { weight: 'lbs', distance: 'mi' };
+// Display units per stored mile.
+export const PER_MILE = { m: 1609.344, km: 1.609344, mi: 1 };
+export const DISTANCE_UNITS = { m: 'Metres (m)', km: 'Kilometres (km)', mi: 'Miles (mi)' };
+export const DISTANCE_STEP = { m: 100, km: 0.1, mi: 0.1 };
+
+const units = { weight: 'lbs', distance: 'm' };
 
 export function setUnits({ weight, distance } = {}) {
   if (weight === 'lbs' || weight === 'kg') units.weight = weight;
-  if (distance === 'mi' || distance === 'km') units.distance = distance;
+  if (PER_MILE[distance]) units.distance = distance;
 }
 export const wUnit = () => units.weight;
 export const dUnit = () => units.distance;
 
 export const weightOut = (lbs) => (units.weight === 'kg' ? lbs / LB_PER_KG : lbs);
 export const weightIn = (v) => (units.weight === 'kg' ? v * LB_PER_KG : v);
-export const distOut = (mi) => (units.distance === 'km' ? mi * KM_PER_MI : mi);
-export const distIn = (v) => (units.distance === 'km' ? v / KM_PER_MI : v);
-// Pace is stored as seconds per mile.
-export const paceOut = (secPerMile) => secPerMile / distOut(1);
+export const distOut = (mi, u = units.distance) => mi * PER_MILE[u];
+export const distIn = (v, u = units.distance) => v / PER_MILE[u];
+// The distance unit an exercise is displayed in.
+export const distUnitOf = (ex) => (PER_MILE[ex?.distanceUnit] ? ex.distanceUnit : units.distance);
+// Pace is stored as seconds per mile; metre-based exercises show pace per km.
+export const paceUnit = (u = units.distance) => (u === 'm' ? 'km' : u);
+export const paceOut = (secPerMile, u = units.distance) => secPerMile / PER_MILE[paceUnit(u)];
 
 export const DEFAULT_WEIGHT_STEP = { lbs: 5, kg: 2.5 };
 export const BODY_STEP = { lbs: 0.2, kg: 0.1 };
 
 export const fmtWeight = (lbs, decimals = 2) => `${fmtNum(weightOut(lbs), decimals)} ${units.weight}`;
-export const fmtDistance = (mi) => `${fmtNum(distOut(mi))} ${units.distance}`;
+export const fmtDistance = (mi, u = units.distance) => `${fmtNum(distOut(mi, u), u === 'm' ? 0 : 2)} ${u}`;
 
 // ---------- dates (ISO yyyy-mm-dd, local time) ----------
 
@@ -136,7 +146,7 @@ export function estimate1RM(weight, reps) {
   return reps === 1 ? weight : weight * (1 + reps / 30);
 }
 
-export function formatSet(set, type) {
+export function formatSet(set, type, du = units.distance) {
   switch (type) {
     case 'weight_reps':
       return `${fmtWeight(set.weight || 0)} × ${set.reps ?? 0}`;
@@ -144,7 +154,7 @@ export function formatSet(set, type) {
       return `${set.reps ?? 0} reps`;
     case 'distance_time': {
       const parts = [];
-      if (set.distance) parts.push(fmtDistance(set.distance));
+      if (set.distance) parts.push(fmtDistance(set.distance, du));
       if (set.seconds) parts.push(formatDuration(set.seconds));
       return parts.join(' in ') || '—';
     }
@@ -155,8 +165,8 @@ export function formatSet(set, type) {
   }
 }
 
-export function formatPace(secondsPerMile) {
-  return secondsPerMile ? `${formatDuration(paceOut(secondsPerMile))} /${units.distance}` : '';
+export function formatPace(secondsPerMile, du = units.distance) {
+  return secondsPerMile ? `${formatDuration(paceOut(secondsPerMile, du))} /${paceUnit(du)}` : '';
 }
 
 // ---------- set validation ----------
@@ -239,7 +249,7 @@ function bestDay(sets, fn) {
 }
 
 // Summary records. Each entry: { label, value (display string), date }.
-export function computeRecords(sets, type) {
+export function computeRecords(sets, type, du = units.distance) {
   const sorted = [...sets].sort(compareSets);
   const rows = [];
   const push = (label, rec, fmt) => {
@@ -262,12 +272,12 @@ export function computeRecords(sets, type) {
     push('Most reps (set)', maxBy(sorted, (s) => s.reps), (v) => `${v} reps`);
     push('Most reps (day)', bestDay(sorted, (s) => s.reps || 0), (v) => `${v} reps`);
   } else if (type === 'distance_time') {
-    push('Longest distance', maxBy(sorted, (s) => s.distance || 0), (v) => fmtDistance(v));
+    push('Longest distance', maxBy(sorted, (s) => s.distance || 0), (v) => fmtDistance(v, du));
     push('Longest time', maxBy(sorted, (s) => s.seconds || 0), (v) => formatDuration(v));
     // Fastest pace is a minimum, so maximise its inverse.
     push('Fastest pace', maxBy(sorted, (s) => (s.distance > 0 && s.seconds > 0 ? s.distance / s.seconds : 0)),
-      (v) => formatPace(1 / v));
-    push('Most distance (day)', bestDay(sorted, (s) => s.distance || 0), (v) => fmtDistance(v));
+      (v) => formatPace(1 / v, du));
+    push('Most distance (day)', bestDay(sorted, (s) => s.distance || 0), (v) => fmtDistance(v, du));
   } else if (type === 'time') {
     push('Longest time', maxBy(sorted, (s) => s.seconds || 0), (v) => formatDuration(v));
     push('Most time (day)', bestDay(sorted, (s) => s.seconds || 0), (v) => formatDuration(v));
@@ -311,25 +321,25 @@ export const METRICS = {
 const TO_DISPLAY = { weight: weightOut, distance: distOut, pace: paceOut, duration: (v) => v, reps: (v) => v };
 
 // Unit label for a metric kind in the current units ('' for time-like kinds).
-export function kindUnit(kind) {
-  return { weight: units.weight, distance: units.distance, reps: 'reps' }[kind] || '';
+export function kindUnit(kind, du = units.distance) {
+  return { weight: units.weight, distance: du, reps: 'reps' }[kind] || '';
 }
 
 // Formats a value that is already in display units.
-export function formatMetric(value, kind) {
+export function formatMetric(value, kind, du = units.distance) {
   if (kind === 'duration') return formatDuration(value);
-  if (kind === 'pace') return `${formatDuration(value)} /${units.distance}`;
-  return `${fmtNum(value, 1)} ${kindUnit(kind)}`;
+  if (kind === 'pace') return `${formatDuration(value)} /${paceUnit(du)}`;
+  return `${fmtNum(value, kind === 'distance' && du === 'm' ? 0 : 1)} ${kindUnit(kind, du)}`;
 }
 
 // One point per workout day (display units), skipping days where the metric is zero.
-export function metricSeries(sets, type, metricKey) {
+export function metricSeries(sets, type, metricKey, du = units.distance) {
   const metric = (METRICS[type] || []).find((m) => m.key === metricKey);
   if (!metric) return [];
   const out = [];
   for (const [date, daySets] of groupByDate(sets)) {
     const value = metric.day(daySets);
-    if (value > 0) out.push({ date, value: TO_DISPLAY[metric.kind](value) });
+    if (value > 0) out.push({ date, value: TO_DISPLAY[metric.kind](value, du) });
   }
   return out;
 }
@@ -337,7 +347,7 @@ export function metricSeries(sets, type, metricKey) {
 // ---------- routines & plans ----------
 
 // A routine item: { exerciseId, sets, reps, weight (lbs, optional), distance (mi), seconds }.
-export function describeTarget(item, type) {
+export function describeTarget(item, type, du = units.distance) {
   const sets = item.sets || 1;
   switch (type) {
     case 'weight_reps':
@@ -346,7 +356,7 @@ export function describeTarget(item, type) {
       return `${sets} × ${item.reps || 0}`;
     case 'distance_time': {
       const parts = [];
-      if (item.distance) parts.push(fmtDistance(item.distance));
+      if (item.distance) parts.push(fmtDistance(item.distance, du));
       if (item.seconds) parts.push(formatDuration(item.seconds));
       return `${sets > 1 ? `${sets} × ` : ''}${parts.join(' in ') || 'cardio'}`;
     }
@@ -406,6 +416,7 @@ export function toCSV(sets, exercisesById, categoriesById) {
     const cat = ex ? categoriesById.get(ex.categoryId) : null;
     const hasWeight = ex?.type === 'weight_reps';
     const hasDistance = ex?.type === 'distance_time' && s.distance;
+    const du = distUnitOf(ex);
     lines.push([
       s.date,
       ex?.name ?? 'Unknown',
@@ -413,8 +424,8 @@ export function toCSV(sets, exercisesById, categoriesById) {
       hasWeight ? fmtNum(weightOut(s.weight)) : '',
       hasWeight ? units.weight : '',
       s.reps || '',
-      hasDistance ? fmtNum(distOut(s.distance)) : '',
-      hasDistance ? units.distance : '',
+      hasDistance ? fmtNum(distOut(s.distance, du), du === 'm' ? 0 : 2) : '',
+      hasDistance ? du : '',
       s.seconds ? formatDuration(s.seconds) : '',
       s.comment ?? '',
     ].map(csvCell).join(','));

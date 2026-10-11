@@ -12,12 +12,11 @@ const DATA_STORES = ['categories', 'exercises', 'sets', 'days', 'body', 'routine
 
 export const DEFAULT_SETTINGS = {
   weightUnit: 'lbs',
-  distanceUnit: 'mi',
+  distanceUnit: 'm',
   restSeconds: 90,
   autoStartTimer: true,
   timerSound: true,
   weightStep: 5,
-  distanceStep: 0.1,
 };
 
 let idb;
@@ -93,6 +92,14 @@ export async function init() {
   for (const m of meta) {
     if (m.key === 'settings') state.settings = { ...DEFAULT_SETTINGS, ...m.value };
     if (m.key === 'lastBackup') state.lastBackup = m.value;
+  }
+  // One-time switch of the default distance unit from miles (the old default) to metres.
+  if (!meta.some((m) => m.key === 'metresDefault')) {
+    if (state.settings.distanceUnit === 'mi') state.settings.distanceUnit = 'm';
+    await tx(['meta'], 'readwrite', (t) => {
+      t.objectStore('meta').put({ key: 'settings', value: state.settings });
+      t.objectStore('meta').put({ key: 'metresDefault', value: true });
+    });
   }
   setUnits({ weight: state.settings.weightUnit, distance: state.settings.distanceUnit });
   if (!meta.some((m) => m.key === 'seeded')) await seed();
@@ -357,6 +364,7 @@ export async function importBackup(obj) {
     t.objectStore('meta').put({ key: 'settings', value: settings });
     t.objectStore('meta').put({ key: 'seeded', value: true });
     t.objectStore('meta').put({ key: 'seededRoutines', value: true });
+    t.objectStore('meta').put({ key: 'metresDefault', value: true });
   });
   const keyOf = { days: 'date', body: 'date' };
   for (const s of DATA_STORES) {

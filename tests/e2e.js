@@ -92,11 +92,12 @@ try {
   await page.click('.header .plus');
   await page.fill('#search', 'runn');
   await page.click('#results >> text=Running');
-  await page.fill('#f-distance', '3.1');
+  assert.match(await page.textContent('#set-form'), /Distance \(m\)/, 'cardio defaults to metres');
+  await page.fill('#f-distance', '5000');
   await page.fill('#f-m', '25');
   await page.fill('#f-s', '30');
   await page.click('#set-form button[type=submit]');
-  await page.waitForFunction(() => document.querySelector('#sets li .v')?.textContent === '3.1 mi in 25:30');
+  await page.waitForFunction(() => document.querySelector('#sets li .v')?.textContent === '5000 m in 25:30');
   await page.click('#timer button[data-t="stop"]');
   assert.ok(await page.isHidden('#timer'));
 
@@ -183,14 +184,14 @@ try {
   await page.click('#tabs >> text=Settings');
   await page.click('text=Kilograms (kg)');
   await page.waitForSelector('.toast.show >> text=Showing kg');
-  await page.click('text=Kilometres (km)');
+  await page.click('#units >> text=Kilometres');
   await page.waitForSelector('.toast.show >> text=Showing kg and km');
   await page.goto(`${base}#/day/${planDate}`);
   await page.waitForSelector('.ex-card');
   assert.match(await page.textContent('.ex-card'), /65\.77 kg × 5/); // 145 lb
   await page.click('#tabs >> text=Log');
   await page.waitForSelector('#day:not(:has(.progress-pill))');
-  assert.match(await page.textContent('#day'), /4\.99 km in 25:30/); // 3.1 mi
+  assert.match(await page.textContent('#day'), /5 km in 25:30/); // 5000 m
   await page.click('#tabs >> text=Routines');
   await page.waitForSelector('.routine');
   assert.match(await page.textContent('#main'), /5 × 5 @ 102\.06 kg/);
@@ -209,8 +210,20 @@ try {
   assert.equal(await page.textContent('.stat strong'), '185.2'); // 84 kg
   await shot('11-body');
   await page.click('#tabs >> text=Settings');
-  await page.click('text=Miles (mi)');
-  await page.waitForSelector('.toast.show >> text=Showing lbs and mi');
+  await page.click('#units >> text=Metres');
+  await page.waitForSelector('.toast.show >> text=Showing lbs and m');
+
+  step('a cardio exercise can use its own distance unit');
+  await page.click('text=Exercises & categories');
+  await page.fill('#search', 'Running');
+  await page.click('#list a:visible >> text=Running');
+  await page.selectOption('#du', 'mi');
+  await page.click('#ex-form button[type=submit]');
+  await page.waitForSelector('.toast.show >> text=Exercise saved');
+  await page.click('#tabs >> text=Log');
+  await page.waitForSelector('#day:not(:has(.progress-pill))');
+  assert.match(await page.textContent('#day'), /3\.11 mi in 25:30/);
+  await page.click('#tabs >> text=Settings');
 
   step('creates a custom exercise');
   await page.click('text=Exercises & categories');

@@ -3,7 +3,7 @@
 import * as db from '../db.js';
 import { state } from '../db.js';
 import {
-  todayISO, isISODate, formatDayLong, fmtNum, weightOut, weightIn, distOut, distIn, wUnit, dUnit, describeTarget,
+  todayISO, isISODate, formatDayLong, fmtNum, weightOut, weightIn, distOut, distIn, wUnit, distUnitOf, describeTarget,
 } from '../logic.js';
 import { $, $$, esc, toast, renderShell, go, nav, colourOf, exerciseLink } from '../ui.js';
 
@@ -62,7 +62,7 @@ export function viewRoutines() {
               <strong>${esc(w.name)}</strong>
               <ul class="targets">${w.items.map((i) => {
                 const ex = state.exercises.get(i.exerciseId);
-                return ex ? `<li><span class="swatch" style="background:${esc(colourOf(ex))}"></span>${esc(ex.name)} <span class="muted">${esc(describeTarget(i, ex.type))}</span></li>` : '';
+                return ex ? `<li><span class="swatch" style="background:${esc(colourOf(ex))}"></span>${esc(ex.name)} <span class="muted">${esc(describeTarget(i, ex.type, distUnitOf(ex)))}</span></li>` : '';
               }).join('') || '<li class="muted">No exercises yet</li>'}</ul>
             </a>
             ${w.items.length ? `<a class="btn primary small" href="#/start/${today}/${r.id}/${w.id}">Start</a>` : ''}
@@ -147,7 +147,8 @@ function itemFields(item, ex, idx) {
   if (ex.type === 'weight_reps' || ex.type === 'reps') parts.push(num('reps', 'Reps', item.reps || '', 'numeric'));
   if (ex.type === 'weight_reps') parts.push(num('weight', wUnit(), item.weight ? fmtNum(weightOut(item.weight)) : '', 'decimal', 'any'));
   if (ex.type === 'distance_time') {
-    parts.push(num('distance', dUnit(), item.distance ? fmtNum(distOut(item.distance)) : '', 'decimal', 'any'));
+    const du = distUnitOf(ex);
+    parts.push(num('distance', du, item.distance ? fmtNum(distOut(item.distance, du), du === 'm' ? 0 : 2) : '', 'decimal', 'any'));
     parts.push(num('minutes', 'min', item.seconds ? fmtNum(item.seconds / 60) : '', 'decimal', 'any'));
   }
   if (ex.type === 'time') parts.push(num('secs', 'sec', item.seconds || '', 'numeric', 'any'));
@@ -208,7 +209,7 @@ export function viewWorkoutEdit(rid, wid) {
       case 'sets': item.sets = Math.max(1, Math.round(v || 1)); input.value = item.sets; break;
       case 'reps': item.reps = v ? Math.round(v) : 0; break;
       case 'weight': item.weight = v ? weightIn(v) : null; break;
-      case 'distance': item.distance = v ? distIn(v) : null; break;
+      case 'distance': item.distance = v ? distIn(v, distUnitOf(state.exercises.get(item.exerciseId))) : null; break;
       case 'minutes': item.seconds = v ? Math.round(v * 60) : null; break;
       case 'secs': item.seconds = v ? Math.round(v) : null; break;
       default: break;

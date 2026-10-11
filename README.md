@@ -5,7 +5,8 @@ workflow of the Android app FitNotes. It is a Progressive Web App (PWA): plain
 HTML/CSS/JavaScript, no build step, no account, no server. All data stays on your
 device in IndexedDB.
 
-Units: **lbs or kg** and **miles or km**, switchable at any time in Settings.
+Units: **lbs or kg** for weight; **metres, km or miles** for distance (metres by
+default, and each cardio exercise can pick its own unit). Switchable at any time.
 
 ## Features
 
@@ -34,7 +35,7 @@ Units: **lbs or kg** and **miles or km**, switchable at any time in Settings.
 - **Bodyweight tracker**: one entry per day with a note, current value,
   7- and 30-day change, a trend graph and a history list.
 - **Units**: everything is stored in lbs and miles and converted for display,
-  so switching between lbs/kg and mi/km instantly re-expresses your whole history
+  so switching between lbs/kg or m/km/mi instantly re-expresses your whole history
   (sets, records, graphs, bodyweight, routine targets) with no data loss.
 - **Calendar** with category-coloured dots on workout days.
 - **Backup / restore** (JSON) through the iOS share sheet (e.g. save to iCloud

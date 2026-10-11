@@ -1,6 +1,6 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
 // Bump VERSION whenever app files change so installed copies pick up the update.
-const VERSION = 'gymlog-v2';
+const VERSION = 'gymlog-v3';
 const SHELL = [
   './',
   'index.html',

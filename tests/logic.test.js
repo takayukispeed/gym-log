@@ -4,10 +4,11 @@ import {
   addDays, addMonths, monthGrid, isISODate, formatDuration, parseDuration, estimate1RM,
   formatSet, validateSet, prSetIds, computeRecords, metricSeries, toCSV, checkBackup,
   BACKUP_FORMAT, BACKUP_VERSION, setUnits, weightIn, weightOut, distIn, distOut, formatPace,
-  describeTarget, bodyStats, formatChange, formatMetric, fmtNum,
+  describeTarget, bodyStats, formatChange, formatMetric, fmtNum, distUnitOf, paceUnit,
 } from '../js/logic.js';
 
-// Runs fn with the given display units, always restoring the lbs/mi default.
+// Most tests below are written in lbs/mi; withUnits switches temporarily.
+setUnits({ weight: 'lbs', distance: 'mi' });
 function withUnits(u, fn) {
   setUnits(u);
   try { fn(); } finally { setUnits({ weight: 'lbs', distance: 'mi' }); }
@@ -213,4 +214,49 @@ test('bodyStats: latest, changes, range', () => {
   assert.equal(formatChange(-1.5), '−1.5 lbs');
   assert.equal(formatChange(0.04), '±0 lbs');
   assert.equal(bodyStats([{ date: '2026-10-08', weight: 184 }]).change7, null);
+});
+
+test('metres: formatting, pace per km, records and targets', () => {
+  const run = { distance: 5000 / 1609.344, seconds: 1500 }; // 5 km in 25:00
+  withUnits({ distance: 'm' }, () => {
+    assert.equal(formatSet(run, 'distance_time'), '5000 m in 25:00');
+    assert.equal(paceUnit(), 'km');
+    assert.equal(formatPace(run.seconds / run.distance), '5:00 /km');
+    const rows = computeRecords([set('2026-07-01', run)], 'distance_time').rows;
+    assert.equal(rows.find((r) => r.label === 'Longest distance').value, '5000 m');
+    assert.equal(fmtNum(distOut(distIn(2000))), '2000');
+    assert.equal(describeTarget({ sets: 1, distance: 2000 / 1609.344, seconds: 480 }, 'distance_time'), '2000 m in 8:00');
+    assert.equal(formatMetric(2000, 'distance'), '2000 m');
+  });
+});
+
+test('per-exercise distance unit overrides the default', () => {
+  withUnits({ distance: 'm' }, () => {
+    assert.equal(distUnitOf({ type: 'distance_time' }), 'm');
+    assert.equal(distUnitOf({ type: 'distance_time', distanceUnit: '' }), 'm');
+    assert.equal(distUnitOf({ type: 'distance_time', distanceUnit: 'mi' }), 'mi');
+    assert.equal(distUnitOf({ distanceUnit: 'bogus' }), 'm');
+    const run = { distance: 3.1, seconds: 1530 };
+    assert.equal(formatSet(run, 'distance_time', 'mi'), '3.1 mi in 25:30');
+    assert.equal(formatSet(run, 'distance_time', 'km'), '4.99 km in 25:30');
+    assert.equal(formatSet(run, 'distance_time'), '4989 m in 25:30');
+    const series = metricSeries([set('2026-07-02', run)], 'distance_time', 'distance', 'km');
+    assert.equal(fmtNum(series[0].value), '4.99');
+  });
+});
+
+test('CSV uses each exercise\'s own distance unit', () => {
+  const exercises = new Map([
+    ['row', { id: 'row', name: 'Rowing Machine', categoryId: 'c', type: 'distance_time' }],
+    ['run', { id: 'run', name: 'Running', categoryId: 'c', type: 'distance_time', distanceUnit: 'km' }],
+  ]);
+  const categories = new Map([['c', { id: 'c', name: 'Cardio' }]]);
+  withUnits({ distance: 'm' }, () => {
+    const rows = toCSV([
+      { id: 'a', date: '2026-07-03', order: 0, exerciseId: 'row', distance: 2000 / 1609.344, seconds: 450 },
+      { id: 'b', date: '2026-07-03', order: 1, exerciseId: 'run', distance: 5 / 1.609344, seconds: 1500 },
+    ], exercises, categories).trim().split('\r\n');
+    assert.equal(rows[1], '2026-07-03,Rowing Machine,Cardio,,,,2000,m,7:30,');
+    assert.equal(rows[2], '2026-07-03,Running,Cardio,,,,5,km,25:00,');
+  });
 });
