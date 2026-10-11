@@ -570,9 +570,16 @@ async function viewSettings() {
         <input type="file" id="restore-file" accept="application/json,.json" hidden>
         <p class="hint">${state.sets.size} sets · ${state.body.size} bodyweight entries · ${state.routines.size} routines · ${state.exercises.size} exercises</p>
       </div>
+      <div class="card form">
+        <h2>App</h2>
+        <p class="hint">Version <strong id="app-version">…</strong>. Updates install automatically when you open the app online.</p>
+        <button class="btn" id="check-update">Check for updates</button>
+      </div>
       <p class="hint center">Gym Log · weights in ${wUnit()}, distances in ${dUnit()} by default</p>`,
   });
 
+  appVersion().then((v) => { const el = $('#app-version'); if (el) el.textContent = v; });
+  $('#check-update').addEventListener('click', checkForUpdate);
   $('#units').addEventListener('change', async () => {
     const weightUnit = $('#units input[name=weightUnit]:checked').value;
     const distanceUnit = $('#units input[name=distanceUnit]:checked').value;
@@ -649,6 +656,55 @@ function initTimerBar() {
   });
 }
 
+// ---------- updates ----------
+
+const STARTED_AT = Date.now();
+let swRegistration = null;
+
+// When a new version takes over: reload straight away if the app was only just
+// opened, otherwise offer a banner so a half-typed set is never lost.
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    if (Date.now() - STARTED_AT < 15000) {
+      reloading = true;
+      location.reload();
+      return;
+    }
+    const bar = $('#update-bar');
+    bar.hidden = false;
+    bar.onclick = () => { reloading = true; location.reload(); };
+  });
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    swRegistration = reg;
+    // iOS often resumes the app without reloading it, so check whenever it comes back.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
+
+async function appVersion() {
+  try {
+    const key = (await caches.keys()).find((k) => k.startsWith('gymlog-'));
+    return key ? key.replace('gymlog-', '') : 'unknown';
+  } catch { return 'unknown'; }
+}
+
+async function checkForUpdate() {
+  if (!swRegistration) return toast('Updates are not available in this browser.');
+  toast('Checking for updates…');
+  try {
+    await swRegistration.update();
+    const incoming = swRegistration.installing || swRegistration.waiting;
+    if (!incoming) toast('You have the latest version.');
+    else toast('Downloading update…');
+  } catch {
+    toast('Could not check for updates (offline?).');
+  }
+}
+
 // ---------- router ----------
 
 function route() {
@@ -696,9 +752,7 @@ async function main() {
   window.addEventListener('hashchange', route);
   route();
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  registerServiceWorker();
 }
 
 main();

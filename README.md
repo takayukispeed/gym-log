@@ -67,7 +67,9 @@ Any static host works; no server code is needed.
 
 HTTPS is required for offline support. All static hosts above provide it.
 
-When you change app files, bump `VERSION` in `sw.js` so installed copies update.
+When you change app files, bump `VERSION` in `sw.js`. The service worker is
+network-first, so an installed copy picks up a new version the next time it is opened
+online; Settings shows the installed version and has a *Check for updates* button.
 
 ## Develop
 
