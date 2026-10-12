@@ -38,9 +38,7 @@ html { height: 100%; background: var(--surface); }
 body {
   /* Pinned to all four screen edges. No explicit height: in iOS home-screen apps
      100%/100dvh can come out short by the status-bar height, leaving a gap. */
-  position: fixed; top: 0; right: 0; left: 0;
-  /* --viewport-gap is set by JS when iOS under-reports the height (see main.js). */
-  bottom: calc(-1 * var(--viewport-gap, 0px));
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
   height: auto;
   display: flex; flex-direction: column;
   background: var(--bg);

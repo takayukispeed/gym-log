@@ -724,27 +724,13 @@ function safeAreaInsets() {
   return insets;
 }
 
-// iOS home-screen apps with a translucent status bar draw from the very top of the
-// screen but report a viewport that is short by the status-bar height, leaving a
-// strip under the tab bar. When the shortfall matches that inset exactly, stretch
-// the page down by it. Anywhere else the gap is 0 and nothing changes.
-let viewportGap = 0;
-function fixViewportGap() {
-  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  const portrait = innerHeight > innerWidth;
-  const shortfall = screen.height - innerHeight;
-  const { top } = safeAreaInsets();
-  viewportGap = standalone && portrait && top > 0 && Math.abs(shortfall - top) <= 2 ? shortfall : 0;
-  document.documentElement.style.setProperty('--viewport-gap', `${viewportGap}px`);
-}
-
 // Screen measurements, shown in Settings to diagnose iOS layout issues.
 function displayDiagnostics() {
   const { top, bottom } = safeAreaInsets();
   const body = document.body.getBoundingClientRect();
   const mode = matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'home screen' : 'browser';
   return `Display: ${mode} · window ${innerWidth}×${innerHeight} · visual ${Math.round(visualViewport?.height ?? 0)} · `
-    + `screen ${screen.width}×${screen.height} · page ${Math.round(body.height)} · safe area ${top}/${bottom} · gap fix ${viewportGap}`;
+    + `screen ${screen.width}×${screen.height} · page ${Math.round(body.height)} · safe area ${top}/${bottom}`;
 }
 
 async function checkForUpdate() {
@@ -799,9 +785,6 @@ async function main() {
     return;
   }
   nav.route = route;
-  fixViewportGap();
-  addEventListener('resize', fixViewportGap);
-  addEventListener('orientationchange', () => setTimeout(fixViewportGap, 300));
   navigator.storage?.persist?.().catch(() => {});
   initTimerBar();
   document.addEventListener('pointerdown', timer.unlockAudio, { once: true });
