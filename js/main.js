@@ -593,14 +593,12 @@ async function viewSettings() {
       <div class="card form">
         <h2>App</h2>
         <p class="hint">Version <strong id="app-version">…</strong>. Updates install automatically when you open the app online.</p>
-        <p class="hint diag" id="diag"></p>
         <button class="btn" id="check-update">Check for updates</button>
       </div>
       <p class="hint center">Gym Log · weights in ${wUnit()}, distances in ${dUnit()} by default</p>`,
   });
 
   appVersion().then((v) => { const el = $('#app-version'); if (el) el.textContent = v; });
-  $('#diag').textContent = displayDiagnostics();
   $('#check-update').addEventListener('click', checkForUpdate);
   $('#units').addEventListener('change', async () => {
     const weightUnit = $('#units input[name=weightUnit]:checked').value;
@@ -712,25 +710,6 @@ async function appVersion() {
     const key = (await caches.keys()).find((k) => k.startsWith('gymlog-'));
     return key ? key.replace('gymlog-', '') : 'unknown';
   } catch { return 'unknown'; }
-}
-
-function safeAreaInsets() {
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;visibility:hidden;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)';
-  document.body.appendChild(probe);
-  const cs = getComputedStyle(probe);
-  const insets = { top: parseFloat(cs.paddingTop) || 0, bottom: parseFloat(cs.paddingBottom) || 0 };
-  probe.remove();
-  return insets;
-}
-
-// Screen measurements, shown in Settings to diagnose iOS layout issues.
-function displayDiagnostics() {
-  const { top, bottom } = safeAreaInsets();
-  const body = document.body.getBoundingClientRect();
-  const mode = matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'home screen' : 'browser';
-  return `Display: ${mode} · window ${innerWidth}×${innerHeight} · visual ${Math.round(visualViewport?.height ?? 0)} · `
-    + `screen ${screen.width}×${screen.height} · page ${Math.round(body.height)} · safe area ${top}/${bottom}`;
 }
 
 async function checkForUpdate() {
