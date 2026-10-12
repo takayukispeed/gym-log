@@ -33,11 +33,14 @@
 * { box-sizing: border-box; }
 /* App-shell layout: the page itself never scrolls (so iOS can't rubber-band or
    shift the bars); only <main> scrolls between a fixed header and tab bar. */
-html, body { margin: 0; height: 100%; overflow: hidden; }
+html, body { margin: 0; overflow: hidden; }
+html { height: 100%; background: var(--surface); }
 body {
-  position: fixed; inset: 0;
+  /* Pinned to all four screen edges. No explicit height: in iOS home-screen apps
+     100%/100dvh can come out short by the status-bar height, leaving a gap. */
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+  height: auto;
   display: flex; flex-direction: column;
-  height: 100%; height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
