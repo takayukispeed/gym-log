@@ -30,7 +30,7 @@ export function renderShell({ title, back, actions = '', body, tab }) {
   const main = $('#main');
   main.innerHTML = body;
   $$('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
-  window.scrollTo(0, 0);
+  main.scrollTop = 0;
 }
 
 export const colourOf = (ex) => state.categories.get(ex?.categoryId)?.colour || '#888';

@@ -767,6 +767,10 @@ async function main() {
   navigator.storage?.persist?.().catch(() => {});
   initTimerBar();
   document.addEventListener('pointerdown', timer.unlockAudio, { once: true });
+  // iOS can nudge the whole page up to reveal a focused input; put it back afterwards.
+  document.addEventListener('focusout', () => setTimeout(() => {
+    if (!document.activeElement?.matches('input, textarea, select')) window.scrollTo(0, 0);
+  }, 100));
   // The "Log" tab always returns to today.
   $('#tab-log').addEventListener('click', (e) => { e.preventDefault(); go(`#/day/${todayISO()}`); });
   window.addEventListener('hashchange', route);
