@@ -300,3 +300,5 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 
 .split { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 .setlist.big .split { margin-left: auto; }
+
+.diag { font-size: 12px; font-variant-numeric: tabular-nums; word-break: break-word; }
