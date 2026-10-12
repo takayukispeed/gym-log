@@ -725,6 +725,16 @@ async function checkForUpdate() {
   }
 }
 
+// ---------- app-like touch ----------
+
+// iOS ignores user-scalable=no, so block pinch-zoom directly: Safari's gesture
+// events, plus any two-finger move (which would otherwise start a zoom).
+function preventZoom() {
+  const stop = (e) => e.preventDefault();
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, stop, { passive: false }));
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+}
+
 // ---------- router ----------
 
 function route() {
@@ -767,6 +777,7 @@ async function main() {
   navigator.storage?.persist?.().catch(() => {});
   initTimerBar();
   document.addEventListener('pointerdown', timer.unlockAudio, { once: true });
+  preventZoom();
   // iOS can nudge the whole page up to reveal a focused input; put it back afterwards.
   document.addEventListener('focusout', () => setTimeout(() => {
     if (!document.activeElement?.matches('input, textarea, select')) window.scrollTo(0, 0);

@@ -34,6 +34,8 @@
 /* App-shell layout: the page itself never scrolls (so iOS can't rubber-band or
    shift the bars); only <main> scrolls between a fixed header and tab bar. */
 html, body { margin: 0; overflow: hidden; }
+/* App-like touch: no double-tap zoom (and no 300 ms tap delay). */
+html { touch-action: manipulation; }
 html { height: 100%; background: var(--surface); }
 body {
   /* Pinned to all four screen edges. No explicit height: in iOS home-screen apps
