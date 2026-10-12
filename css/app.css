@@ -144,6 +144,15 @@ input, select, textarea { font-size: 16px; }
 .field { display: block; margin: 10px 0; }
 .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
+/* iOS Safari gives date/time inputs an intrinsic minimum width and native styling,
+   so they overflow their card. Reset them to behave like the other fields. */
+input[type=date], input[type=time] {
+  -webkit-appearance: none; appearance: none;
+  display: block; min-width: 0; max-width: 100%;
+  min-height: 44px; line-height: 1.4;
+}
+input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.field input, .field select, .field textarea { min-width: 0; max-width: 100%; }
 .toggle { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
 .toggle input { width: 22px; height: 22px; }
 .form h2 { font-size: 15px; margin: 4px 0 4px; }
