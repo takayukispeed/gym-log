@@ -105,6 +105,24 @@ export async function init() {
   if (!meta.some((m) => m.key === 'seeded')) await seed();
   if (!meta.some((m) => m.key === 'seededRoutines')) await seedRoutines();
   if (!meta.some((m) => m.key === 'rowingDefaults')) await applyRowingDefaults();
+  if (!meta.some((m) => m.key === 'martialArts')) await addMartialArts();
+}
+
+// Adds a Martial Arts category and a time-based Muay Thai exercise for installs
+// that predate them. Anything the user already created with those names is kept.
+async function addMartialArts() {
+  const findCat = (n) => [...state.categories.values()].find((c) => c.name.toLowerCase() === n);
+  let cat = findCat('martial arts');
+  const newCat = cat ? null : { id: uid(), name: 'Martial Arts', colour: '#8d6e63', sort: Math.max(-1, ...[...state.categories.values()].map((c) => c.sort ?? 0)) + 1 };
+  cat = cat || newCat;
+  const newEx = findExerciseByName('Muay Thai') ? null : { id: uid(), name: 'Muay Thai', categoryId: cat.id, type: 'time', notes: '' };
+  await tx(['categories', 'exercises', 'meta'], 'readwrite', (t) => {
+    if (newCat) t.objectStore('categories').put(newCat);
+    if (newEx) t.objectStore('exercises').put(newEx);
+    t.objectStore('meta').put({ key: 'martialArts', value: true });
+  });
+  if (newCat) state.categories.set(newCat.id, newCat);
+  if (newEx) state.exercises.set(newEx.id, newEx);
 }
 
 // Rowing Machine shows splits per 500 m with watts, as on an erg monitor.

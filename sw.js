@@ -1,7 +1,7 @@
 // Offline support. Network first (so updates show up on the next launch), with the
 // cached copy used when offline or when the network is too slow.
 // Bump VERSION whenever app files change; Settings shows it.
-const VERSION = 'gymlog-v13';
+const VERSION = 'gymlog-v14';
 const NETWORK_TIMEOUT_MS = 4000;
 const SHELL = [
   './',

@@ -8,6 +8,7 @@ export const SEED_CATEGORIES = [
   { name: 'Legs', colour: '#5a9a2f' },
   { name: 'Shoulders', colour: '#c4a01a' },
   { name: 'Triceps', colour: '#b04aa8' },
+  { name: 'Martial Arts', colour: '#8d6e63' },
 ];
 
 // [name, category, type]
@@ -58,6 +59,7 @@ export const SEED_EXERCISES = [
   ['Rope Pushdown', 'Triceps', 'weight_reps'],
   ['Skull Crusher', 'Triceps', 'weight_reps'],
   ['Overhead Triceps Extension', 'Triceps', 'weight_reps'],
+  ['Muay Thai', 'Martial Arts', 'time'],
 ];
 
 // Sample routine: a 5×5 programme alternating two workouts.
