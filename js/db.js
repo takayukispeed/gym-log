@@ -315,6 +315,30 @@ export async function loadWorkout(date, workout) {
   await saveDay({ ...day, plan, exerciseOrder: order, workoutName: workout.name });
 }
 
+// Replaces a planned exercise with another for this day only, keeping its
+// target sets/reps (a weight target belongs to the old lift, so it is dropped).
+// If the old exercise already has sets today it stays, and the new one follows it.
+export async function swapPlanned(date, fromId, toId) {
+  const day = state.days.get(date);
+  const from = day?.plan?.find((p) => p.exerciseId === fromId);
+  const toEx = state.exercises.get(toId);
+  if (!from || !toEx || fromId === toId) return;
+  const counted = toEx.type === 'weight_reps' || toEx.type === 'reps';
+  const item = { exerciseId: toId, sets: from.sets || 1, reps: counted ? from.reps || 0 : 0 };
+  const plan = [];
+  for (const p of day.plan) {
+    if (p.exerciseId === toId) continue;
+    plan.push(p.exerciseId === fromId ? item : p);
+  }
+  const keepOld = setsOnFor(date, fromId).length > 0;
+  const order = exercisesOn(date).map((e) => e.id).filter((id) => id !== toId);
+  const at = order.indexOf(fromId);
+  if (at < 0) order.push(toId);
+  else if (keepOld) order.splice(at + 1, 0, toId);
+  else order[at] = toId;
+  await saveDay({ ...day, plan, exerciseOrder: order });
+}
+
 export async function clearPlan(date) {
   const day = state.days.get(date);
   if (day) await saveDay({ ...day, plan: [], workoutName: '' });

@@ -189,6 +189,29 @@ try {
   assert.deepEqual(await page.locator('.progress-pill').allTextContents(), ['0/5 sets', '0/5 sets', '0/5 sets']);
   assert.equal(await page.textContent('.workout-label'), 'Workout A');
 
+  step('swap and skip a planned exercise for the day');
+  await page.click('.ex-card >> text=Overhead Press');
+  await page.waitForSelector('.plan-actions');
+  await page.click('text=⇄ Swap exercise');
+  await page.fill('#search', 'seated dumbbell');
+  await page.click('#results >> text=Seated Dumbbell Press');
+  await page.waitForSelector('.plan-bar');
+  assert.match(await page.textContent('.header h1'), /Seated Dumbbell Press/);
+  assert.match(await page.textContent('.plan-bar'), /5 × 5/);
+  await page.click('.header .back');
+  await page.waitForSelector('.ex-card');
+  assert.deepEqual(await page.locator('.ex-name').evaluateAll((els) => els.map((e) => e.firstChild.textContent)),
+    ['Flat Barbell Bench Press', 'Barbell Squat', 'Seated Dumbbell Press']);
+  await page.click('.ex-card >> text=Seated Dumbbell Press');
+  await page.click('#skip');
+  await page.waitForSelector('.toast.show >> text=skipped today');
+  await page.waitForFunction(() => document.querySelectorAll('.ex-card').length === 2);
+  await page.click('#tabs >> text=Routines');
+  await page.waitForSelector('.routine');
+  assert.match(await page.textContent('#main'), /Overhead Press/); // routine unchanged
+  await page.goto(`${base}#/day/${planDate}`);
+  await page.waitForSelector('.ex-card');
+
   step('tracks planned sets to completion');
   await page.click('.ex-card >> text=Flat Barbell Bench Press');
   await page.waitForSelector('.plan-bar');

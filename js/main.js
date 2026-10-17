@@ -175,6 +175,53 @@ function viewPickExercise(date, categoryId) {
   });
 }
 
+// Picker for swapping a planned exercise: #/swap/date/fromId[/categoryId]
+function viewSwapPick(date, fromId, categoryId) {
+  const from = state.exercises.get(fromId);
+  if (!from || !db.planFor(date, fromId)) return go(`#/day/${date}`);
+  const base = `#/swap/${date}/${fromId}`;
+  const link = (e) => exerciseLink(e, `#/swap-do/${date}/${fromId}/${e.id}`);
+  const others = (list) => list.filter((e) => e.id !== fromId);
+  if (categoryId) {
+    const cat = state.categories.get(categoryId);
+    if (!cat) return go(base);
+    renderShell({
+      title: esc(cat.name),
+      back: base,
+      tab: 'log',
+      body: `<ul class="list">${others(db.exercisesIn(categoryId)).map(link).join('') || '<li class="empty">No exercises.</li>'}</ul>`,
+    });
+    return;
+  }
+  renderShell({
+    title: `Swap ${esc(from.name)}`,
+    back: `#/ex/${fromId}/${date}/track`,
+    tab: 'log',
+    body: `
+      <p class="hint">Pick a replacement for today only. It keeps the target (${esc(describeTarget(db.planFor(date, fromId), from.type, distUnitOf(from)))}); your routine is unchanged.</p>
+      <input type="search" id="search" class="search" placeholder="Search exercises" autocomplete="off">
+      <div id="results"></div>
+      <ul class="list" id="cats">
+        ${db.categoryList().map((c) => `<li><a href="${base}/${c.id}"><span class="swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}<span class="count">${db.exercisesIn(c.id).length}</span></a></li>`).join('')}
+      </ul>`,
+  });
+  $('#search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    $('#cats').hidden = !!q;
+    const hits = q ? others([...state.exercises.values()]).filter((x) => x.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : [];
+    $('#results').innerHTML = !q ? '' : hits.length ? `<ul class="list">${hits.map(link).join('')}</ul>` : '<p class="empty">No matches.</p>';
+  });
+}
+
+async function doSwap(date, fromId, toId) {
+  const from = state.exercises.get(fromId);
+  const to = state.exercises.get(toId);
+  await db.swapPlanned(date, fromId, toId);
+  if (from && to) toast(`${from.name} → ${to.name}`);
+  // replace so Back from the new exercise doesn't re-run the swap
+  location.replace(`#/ex/${toId}/${date}/track`);
+}
+
 // ---------- exercise: track / history / graph / records ----------
 
 function viewExercise(exerciseId, date, tab) {
@@ -247,7 +294,11 @@ function renderTrack(body, ex, date) {
       ${plan ? `<div class="plan-bar ${complete ? 'done' : ''}">
         <span>Target <strong>${esc(describeTarget(plan, ex.type, distUnitOf(ex)))}</strong></span>
         <span>${complete ? '✓ ' : ''}${sets.length}/${target} sets</span>
-      </div>` : ''}
+      </div>
+      ${sets.length === 0 ? `<div class="plan-actions">
+        <a class="btn ghost" href="#/swap/${date}/${ex.id}">⇄ Swap exercise</a>
+        <button type="button" class="btn ghost danger" id="skip">Skip today</button>
+      </div>` : ''}` : ''}
       <form id="set-form" class="card track" autocomplete="off">
         ${formHtml(values)}
         <div class="row">
@@ -295,6 +346,11 @@ function renderTrack(body, ex, date) {
       draw(vals);
     });
     $('#clear', body)?.addEventListener('click', () => draw({}));
+    $('#skip', body)?.addEventListener('click', async () => {
+      await db.deleteExerciseFromDay(date, ex.id);
+      toast(`${ex.name} skipped today`);
+      go(`#/day/${date}`);
+    });
     $('#deselect', body)?.addEventListener('click', () => { selectedId = null; draw(readForm()); });
     $('#del', body)?.addEventListener('click', async () => {
       await db.deleteSet(selected.id);
@@ -737,7 +793,7 @@ function preventZoom() {
 
 // ---------- router ----------
 
-const LOG_VIEWS = ['day', 'add', 'ex'];
+const LOG_VIEWS = ['day', 'add', 'ex', 'swap'];
 const isLogView = (view) => !view || LOG_VIEWS.includes(view);
 const currentView = () => location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
 let lastLogHash = null;
@@ -763,6 +819,8 @@ function route() {
     case 'radd': return viewRoutinePick(a, b, c);
     case 'radd-do': return addToWorkout(a, b, c);
     case 'start': return startFromRoute(a, b, c);
+    case 'swap': return viewSwapPick(a, b, c);
+    case 'swap-do': return doSwap(a, b, c);
     case 'body': return viewBody(a);
     case 'exercises': return viewExercises();
     case 'exercise-edit': return viewExerciseEdit(a, params);
