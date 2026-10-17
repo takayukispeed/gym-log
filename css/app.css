@@ -307,3 +307,6 @@ input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .plan-actions { display: flex; justify-content: space-between; margin: -4px 0 8px; }
 .plan-actions .btn { font-size: 15px; padding: 6px 4px; min-height: 36px; }
 .btn.ghost.danger { color: var(--danger); }
+
+.span-bar { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; padding: 10px 12px; margin-bottom: 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.span-bar strong { color: var(--text); font-weight: 600; }

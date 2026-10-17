@@ -7,7 +7,7 @@ import {
   todayISO, addDays, addMonths, isISODate, formatDayLong, formatDayCompact, formatMonth, monthGrid,
   fmtNum, formatDuration, formatSet, formatMetric, kindUnit, validateSet, describeTarget,
   prSetIds, computeRecords, metricSeries, groupByDate, toCSV,
-  weightOut, weightIn, distOut, distIn, wUnit, dUnit, fmtBody, distUnitOf, paceUnit, displayOf, setSplit, paceLabel,
+  weightOut, weightIn, distOut, distIn, wUnit, dUnit, fmtBody, workoutSpan, formatMinutes, formatClock, distUnitOf, paceUnit, displayOf, setSplit, paceLabel,
   PACE_UNITS,
 } from './logic.js';
 import {
@@ -36,6 +36,17 @@ function needsBackupNudge() {
   if (state.sets.size < 10) return false;
   if (!state.lastBackup) return true;
   return Date.now() - new Date(state.lastBackup).getTime() > 14 * 864e5;
+}
+
+// "Start 6:02 pm · End 7:10 pm   ≈ 1 h 8 min", from the first to the last saved set.
+function spanHtml(sets) {
+  const span = workoutSpan(sets, sets[0]?.date);
+  if (!span) return '';
+  const single = span.end === span.start;
+  return `<div class="span-bar" id="span">
+    <span>Start <strong>${esc(formatClock(span.start))}</strong>${single ? '' : ` · End <strong>${esc(formatClock(span.end))}</strong>`}</span>
+    ${single ? '' : `<span>≈ <strong>${esc(formatMinutes(span.minutes))}</strong></span>`}
+  </div>`;
 }
 
 function viewDay(date) {
@@ -89,6 +100,7 @@ function viewDay(date) {
       </div>
       ${needsBackupNudge() ? '<a class="banner" href="#/settings">It has been a while since your last backup. Tap to back up.</a>' : ''}
       ${day?.workoutName && day.plan?.length ? `<div class="workout-label">${esc(day.workoutName)}</div>` : ''}
+      ${spanHtml(db.setsOn(date))}
       <div id="day" class="day">${exercises.length ? cards : empty}</div>
       <a class="chip-link" href="#/body/${date}">⚖ ${body ? `Bodyweight ${fmtBody(weightOut(body.weight))} ${wUnit()}` : 'Log bodyweight'}</a>
       ${exercises.length ? `

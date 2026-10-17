@@ -153,6 +153,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.ex-name')?.textContent === 'Running');
   names = await page.locator('.ex-name').allTextContents();
   assert.deepEqual(names, ['Running', 'Flat Barbell Bench Press']);
+  assert.match(await page.textContent('#span'), /Start/, 'day shows workout start time');
   await page.click('#toggle-edit');
   await page.fill('#day-note', 'Good session');
   await page.locator('#day-note').blur();

@@ -5,7 +5,7 @@ import {
   formatSet, validateSet, prSetIds, computeRecords, metricSeries, toCSV, checkBackup,
   BACKUP_FORMAT, BACKUP_VERSION, setUnits, weightIn, weightOut, distIn, distOut, formatPace,
   describeTarget, bodyStats, formatChange, formatMetric, fmtNum, distUnitOf, paceUnit,
-  displayOf, setSplit, formatPaceValue, wattsFromPace,
+  displayOf, setSplit, formatPaceValue, wattsFromPace, workoutSpan, formatMinutes,
 } from '../js/logic.js';
 
 // Most tests below are written in lbs/mi; withUnits switches temporarily.
@@ -317,4 +317,24 @@ test('running best times use running distances', () => {
   ];
   assert.deepEqual(computeRecords(sets, 'distance_time', run).bestTimes.map((b) => b.label), ['5 km', 'Half marathon']);
   assert.deepEqual(computeRecords(sets, 'weight_reps').bestTimes, []);
+});
+
+test('workoutSpan uses first and last set saved on that day', () => {
+  const at = (h, m) => new Date(2026, 9, 17, h, m).getTime();
+  const sets = [
+    { date: '2026-10-17', createdAt: at(18, 40) },
+    { date: '2026-10-17', createdAt: at(18, 2) },
+    { date: '2026-10-17', createdAt: at(19, 10) },
+    { date: '2026-10-17' }, // no timestamp (older data) is ignored
+  ];
+  const span = workoutSpan(sets, '2026-10-17');
+  assert.equal(span.start, at(18, 2));
+  assert.equal(span.end, at(19, 10));
+  assert.equal(span.minutes, 68);
+  // Back-filled sets (saved on a later day) do not count.
+  assert.equal(workoutSpan([{ date: '2026-10-15', createdAt: at(9, 0) }], '2026-10-15'), null);
+  assert.equal(workoutSpan([], '2026-10-17'), null);
+  assert.equal(formatMinutes(68), '1 h 8 min');
+  assert.equal(formatMinutes(42), '42 min');
+  assert.equal(formatMinutes(120), '2 h');
 });

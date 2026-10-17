@@ -473,6 +473,34 @@ export function bodyStats(entries, today = todayISO()) {
   };
 }
 
+// ---------- workout duration ----------
+
+// Approximate session span from when sets were saved. Only sets saved on the
+// day itself count, so back-filling a past day doesn't produce a bogus time.
+// Returns { start, end, minutes } (ms timestamps) or null.
+export function workoutSpan(sets, date) {
+  const times = sets
+    .map((s) => s.createdAt)
+    .filter((t) => Number.isFinite(t) && toISO(new Date(t)) === date)
+    .sort((a, b) => a - b);
+  if (!times.length) return null;
+  const start = times[0];
+  const end = times[times.length - 1];
+  return { start, end, minutes: Math.round((end - start) / 60000) };
+}
+
+export function formatMinutes(min) {
+  if (min < 1) return '<1 min';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+export function formatClock(ms) {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 export function formatChange(v) {
   if (v == null) return '—';
   const r = Number(v.toFixed(bodyDecimals()));
