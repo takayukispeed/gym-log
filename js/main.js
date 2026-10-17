@@ -7,7 +7,7 @@ import {
   todayISO, addDays, addMonths, isISODate, formatDayLong, formatDayCompact, formatMonth, monthGrid,
   fmtNum, formatDuration, formatSet, formatMetric, kindUnit, validateSet, describeTarget,
   prSetIds, computeRecords, metricSeries, groupByDate, toCSV,
-  weightOut, weightIn, distOut, distIn, wUnit, dUnit, distUnitOf, paceUnit, displayOf, setSplit, paceLabel,
+  weightOut, weightIn, distOut, distIn, wUnit, dUnit, fmtBody, distUnitOf, paceUnit, displayOf, setSplit, paceLabel,
   PACE_UNITS,
 } from './logic.js';
 import {
@@ -90,7 +90,7 @@ function viewDay(date) {
       ${needsBackupNudge() ? '<a class="banner" href="#/settings">It has been a while since your last backup. Tap to back up.</a>' : ''}
       ${day?.workoutName && day.plan?.length ? `<div class="workout-label">${esc(day.workoutName)}</div>` : ''}
       <div id="day" class="day">${exercises.length ? cards : empty}</div>
-      <a class="chip-link" href="#/body/${date}">⚖ ${body ? `Bodyweight ${fmtNum(weightOut(body.weight), 1)} ${wUnit()}` : 'Log bodyweight'}</a>
+      <a class="chip-link" href="#/body/${date}">⚖ ${body ? `Bodyweight ${fmtBody(weightOut(body.weight))} ${wUnit()}` : 'Log bodyweight'}</a>
       ${exercises.length ? `
         <label class="field note"><span>Workout note</span>
           <textarea id="day-note" rows="2" placeholder="How did it go?">${esc(note)}</textarea>
@@ -737,7 +737,13 @@ function preventZoom() {
 
 // ---------- router ----------
 
+const LOG_VIEWS = ['day', 'add', 'ex'];
+const isLogView = (view) => !view || LOG_VIEWS.includes(view);
+const currentView = () => location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
+let lastLogHash = null;
+
 function route() {
+  if (isLogView(currentView())) lastLogHash = location.hash || `#/day/${todayISO()}`;
   const [path, query = ''] = location.hash.replace(/^#/, '').split('?');
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(query);
@@ -783,7 +789,14 @@ async function main() {
     if (!document.activeElement?.matches('input, textarea, select')) window.scrollTo(0, 0);
   }, 100));
   // The "Log" tab always returns to today.
-  $('#tab-log').addEventListener('click', (e) => { e.preventDefault(); go(`#/day/${todayISO()}`); });
+  // The Log tab returns to whatever was last open in it (e.g. a lift) if that was
+  // for today; tapping it while already in the Log goes to today's overview.
+  $('#tab-log').addEventListener('click', (e) => {
+    e.preventDefault();
+    const today = todayISO();
+    const resume = !isLogView(currentView()) && lastLogHash?.includes(`/${today}`);
+    go(resume ? lastLogHash : `#/day/${today}`);
+  });
   window.addEventListener('hashchange', route);
   route();
 

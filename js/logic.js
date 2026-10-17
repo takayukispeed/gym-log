@@ -81,7 +81,10 @@ export function setSplit(set, d) {
 }
 
 export const DEFAULT_WEIGHT_STEP = { lbs: 5, kg: 2.5 };
-export const BODY_STEP = { lbs: 0.2, kg: 0.1 };
+// Bodyweight is entered and shown in whole pounds, or to 0.1 kg.
+export const BODY_STEP = { lbs: 1, kg: 0.1 };
+export const bodyDecimals = () => (units.weight === 'kg' ? 1 : 0);
+export const fmtBody = (displayValue) => fmtNum(displayValue, bodyDecimals());
 
 export const fmtWeight = (lbs, decimals = 2) => `${fmtNum(weightOut(lbs), decimals)} ${units.weight}`;
 export const fmtDistance = (mi, u = units.distance) => `${fmtNum(distOut(mi, u), u === 'm' ? 0 : 2)} ${u}`;
@@ -472,8 +475,8 @@ export function bodyStats(entries, today = todayISO()) {
 
 export function formatChange(v) {
   if (v == null) return '—';
-  const r = Number(v.toFixed(1));
-  return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${fmtNum(Math.abs(r), 1)} ${units.weight}`;
+  const r = Number(v.toFixed(bodyDecimals()));
+  return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${fmtBody(Math.abs(r))} ${units.weight}`;
 }
 
 // ---------- export ----------

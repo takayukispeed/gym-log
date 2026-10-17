@@ -212,8 +212,11 @@ test('bodyStats: latest, changes, range', () => {
   assert.equal(s.min, 184);
   assert.equal(s.max, 190);
   assert.equal(s.daysSinceLatest, 3);
-  assert.equal(formatChange(-1.5), '−1.5 lbs');
+  // Whole pounds; tenths of a kilogram.
+  assert.equal(formatChange(-1.4), '−1 lbs');
+  assert.equal(formatChange(2.6), '+3 lbs');
   assert.equal(formatChange(0.04), '±0 lbs');
+  withUnits({ weight: 'kg' }, () => assert.equal(formatChange(-0.68), '−0.7 kg'));
   assert.equal(bodyStats([{ date: '2026-10-08', weight: 184 }]).change7, null);
 });
 

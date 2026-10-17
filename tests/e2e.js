@@ -101,9 +101,24 @@ try {
   await page.click('#timer button[data-t="stop"]');
   assert.ok(await page.isHidden('#timer'));
 
-  step('rowing shows a 500 m split, watts and best times');
+  step('Log tab returns to the open lift after visiting another tab');
   await page.click('.header .back');
+  await page.click('.ex-card >> text=Flat Barbell Bench Press');
+  await page.waitForSelector('#set-form');
+  await page.click('#tabs >> text=Calendar');
+  await page.waitForSelector('.cal');
+  await page.click('#tabs >> text=Log');
+  await page.waitForSelector('#set-form');
+  assert.match(await page.textContent('.header h1'), /Flat Barbell Bench Press/);
+  await page.click('#tabs >> text=Log'); // tapping again goes to today's overview
+  await page.waitForSelector('#day');
+  await page.click('.ex-card >> text=Running');
+  await page.waitForSelector('#set-form');
+  await page.click('.header .back');
+  await page.waitForSelector('#day');
   await page.click('.header .plus');
+
+  step('rowing shows a 500 m split, watts and best times');
   await page.fill('#search', 'rowing');
   await page.click('#results >> text=Rowing Machine');
   await page.fill('#f-distance', '2000');
@@ -234,7 +249,7 @@ try {
   await page.waitForSelector('.toast.show >> text=Showing lbs');
   await page.click('#tabs >> text=Body');
   await page.waitForSelector('.stats');
-  assert.equal(await page.textContent('.stat strong'), '185.2'); // 84 kg
+  assert.equal(await page.textContent('.stat strong'), '185'); // 84 kg, in whole pounds
   await shot('11-body');
   await page.click('#tabs >> text=Settings');
   await page.click('#units >> text=Metres');
